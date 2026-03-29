@@ -1,9 +1,9 @@
 import { execSync } from 'child_process';
 import { readFileSync } from 'fs';
 import { resolve } from 'path';
-import { GitRepo } from '@agent-git-mail/agm/git/repo.js';
-import { GitWaterline } from '@agent-git-mail/agm/git/waterline.js';
-import { parseFrontmatter } from '@agent-git-mail/agm/domain/frontmatter.js';
+import { GitRepo } from '@t0u9h/agent-git-mail/git/repo.js';
+import { GitWaterline } from '@t0u9h/agent-git-mail/git/waterline.js';
+import { parseFrontmatter } from '@t0u9h/agent-git-mail/domain/frontmatter.js';
 
 /**
  * Watch a single agent repo for new inbox messages (one-shot, used in daemon loop).

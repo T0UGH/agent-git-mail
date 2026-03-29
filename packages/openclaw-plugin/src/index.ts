@@ -1,52 +1,47 @@
 import type { OpenClawPluginApi, OpenClawPluginService } from 'openclaw';
-import type { Config } from '@agent-git-mail/agm/config';
+import type { Config, AgentConfig } from '@t0u9h/agent-git-mail/config';
 import { SessionBindingStore } from './session-binding.js';
 
 const sessionBindings = new SessionBindingStore();
 
 let pluginRuntime: OpenClawPluginApi['runtime'] | null = null;
 
-export function createPlugin(): {
-  id: string;
-  name: string;
-  description: string;
-  register: (api: OpenClawPluginApi) => void;
-} {
-  return {
-    id: 'agent-git-mail',
-    name: 'Agent Git Mail',
-    description: 'Git-based async mailbox for agent-to-agent communication',
+const plugin = {
+  id: 'openclaw-agent-git-mail',
+  name: 'Agent Git Mail',
+  description: 'Git-based async mailbox for assistant-style agents',
 
-    register(api: OpenClawPluginApi): void {
-      pluginRuntime = api.runtime;
+  register(api: OpenClawPluginApi): void {
+    pluginRuntime = api.runtime;
 
-      // Register session binding hooks
-      api.on('session_start', (event) => {
-        if (!event.sessionKey) return;
-        const parts = event.sessionKey.split(':');
-        const agentId = parts[1] ?? '';
-        if (agentId && sessionBindings.canBind(event.sessionKey)) {
-          sessionBindings.bind(event.sessionKey, agentId);
-          api.logger.info(`[agm] bound session ${event.sessionKey} to agent ${agentId}`);
-        }
-      });
+    // Register session binding hooks
+    api.on('session_start', (event) => {
+      if (!event.sessionKey) return;
+      const parts = event.sessionKey.split(':');
+      const agentId = parts[1] ?? '';
+      if (agentId && sessionBindings.canBind(event.sessionKey)) {
+        sessionBindings.bind(event.sessionKey, agentId);
+        api.logger.info(`[agm] bound session ${event.sessionKey} to agent ${agentId}`);
+      }
+    });
 
-      api.on('session_end', (event) => {
-        if (!event.sessionKey) return;
-        const parts = event.sessionKey.split(':');
-        const agentId = parts[1] ?? '';
-        if (agentId) {
-          sessionBindings.unbind(agentId);
-          api.logger.info(`[agm] unbound session for agent ${agentId}`);
-        }
-      });
+    api.on('session_end', (event) => {
+      if (!event.sessionKey) return;
+      const parts = event.sessionKey.split(':');
+      const agentId = parts[1] ?? '';
+      if (agentId) {
+        sessionBindings.unbind(agentId);
+        api.logger.info(`[agm] unbound session for agent ${agentId}`);
+      }
+    });
 
-      // Register the daemon service
-      const service = createService(api, sessionBindings);
-      api.registerService(service);
-    },
-  };
-}
+    // Register the daemon service
+    const service = createService(api, sessionBindings);
+    api.registerService(service);
+  },
+};
+
+export default plugin;
 
 function createService(
   api: OpenClawPluginApi,
@@ -88,7 +83,7 @@ async function pollOnce(): Promise<void> {
 
   let config: Config | null = null;
   try {
-    const { loadConfig } = await import('@agent-git-mail/agm/config');
+    const { loadConfig } = await import('@t0u9h/agent-git-mail/config');
     config = loadConfig();
   } catch {
     return; // no config
@@ -96,7 +91,7 @@ async function pollOnce(): Promise<void> {
 
   const { watchAgentOnce } = await import('./watch-agent.js');
 
-  const entries = Object.entries(config.agents);
+  const entries = Object.entries(config.agents) as Array<[string, AgentConfig]>;
   for (const [name, agent] of entries) {
     const sessionKey = sessionBindings.get(name);
     if (!sessionKey) continue;

@@ -1,19 +1,46 @@
 {
-  "name": "@agent-git-mail/agm",
-  "version": "0.1.0",
-  "private": true,
+  "name": "@t0u9h/agent-git-mail",
+  "version": "0.1.2",
+  "private": false,
   "type": "module",
+  "description": "A minimal, git-native async mail system for assistant-style agents.",
+  "license": "MIT",
   "main": "./dist/index.js",
   "bin": {
-    "agm": "./dist/index.js"
+    "agm": "dist/index.js"
   },
   "exports": {
     ".": "./dist/index.js",
-    "./run-daemon": "./dist/app/run-daemon.js",
     "./config": "./dist/config/index.js",
-    "./git": "./dist/git/index.js",
-    "./domain": "./dist/domain/index.js"
+    "./git/repo.js": "./dist/git/repo.js",
+    "./git/waterline.js": "./dist/git/waterline.js",
+    "./domain/frontmatter.js": "./dist/domain/frontmatter.js"
   },
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE"
+  ],
+  "publishConfig": {
+    "access": "public"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/T0UGH/agent-git-mail.git",
+    "directory": "packages/agm"
+  },
+  "homepage": "https://github.com/T0UGH/agent-git-mail",
+  "bugs": {
+    "url": "https://github.com/T0UGH/agent-git-mail/issues"
+  },
+  "keywords": [
+    "agent",
+    "mail",
+    "git",
+    "openclaw",
+    "cli",
+    "async"
+  ],
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "test": "vitest run",
