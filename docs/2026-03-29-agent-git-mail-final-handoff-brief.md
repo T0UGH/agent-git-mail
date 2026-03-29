@@ -99,11 +99,16 @@ runtime:
 ### daemon / 新信检测
 
 - daemon 固定 **30 秒**轮询
-- 不做自定义业务型 checkpoint 文件
-- 优先采用 **git 水位**方案
-- 当前倾向：**local ref**，如 `refs/agm/last-seen`
+- **不做自定义 checkpoint 文件**
+- **明确采用本地 git ref 作为水位方案**，例如 `refs/agm/last-seen`
+- git ref 属于 daemon 本地运行态表达，**不进入 repo 协议层**
 - 新信判定规则：diff 中的 **`A inbox/*.md`**
 - 首次启动：**默认只建水位，不补历史**
+
+### 命令行为纪律
+
+- **`archive` 必须 push**，不能只做本地归档
+- **提交必须精确到目标文件**，不能顺手带上其他脏改动
 
 ### OpenClaw 集成边界
 

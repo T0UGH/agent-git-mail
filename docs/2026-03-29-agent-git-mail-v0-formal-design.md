@@ -327,13 +327,17 @@ daemon 不负责：
 
 ## 9. checkpoint 模型
 
-### 9.1 checkpoint 是 daemon 本地状态
+### 9.1 git 水位是 daemon 本地状态
 
-daemon 必须维护自己的本地 checkpoint。
+daemon 必须维护自己的本地运行态水位。
 
-这个 checkpoint 不写回 repo 协议层，不作为共享真相。
+v0 明确采用：
 
-### 9.2 checkpoint 的作用
+> **本地 git ref 作为水位方案**，例如 `refs/agm/last-seen`
+
+这个 git ref 不写回 repo 协议层，不作为共享真相。
+
+### 9.2 git 水位的作用
 
 主要用于：
 
@@ -341,9 +345,9 @@ daemon 必须维护自己的本地 checkpoint。
 - 避免重复注入
 - 记录上次已经观察过的新信边界
 
-### 9.3 为什么 checkpoint 不进 repo
+### 9.3 为什么 git 水位不进入协议层
 
-因为一旦 checkpoint 进入 repo：
+因为一旦把这类运行态信息提升为 repo 协议的一部分：
 
 - 会污染邮箱历史
 - 会和“只提交目标信件文件”的纪律冲突
@@ -351,7 +355,7 @@ daemon 必须维护自己的本地 checkpoint。
 
 结论：
 
-> checkpoint 属于 daemon 运行时，不属于邮箱协议。
+> git 水位属于 daemon 运行时，不属于邮箱协议。
 
 ---
 

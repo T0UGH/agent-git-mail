@@ -58,13 +58,12 @@ Git 本身负责：
 最小字段建议为：
 
 ```yaml
-id: msg_20260329_xxx
 from: mt
 to: hex
 subject: 关于 mailbox 重构的想法
 created_at: 2026-03-29T02:00:00+08:00
-reply_to: msg_20260328_xxx   # optional
-expects_reply: true          # optional
+reply_to: 2026-03-29T01-40-00-hex-to-mt.md   # optional
+expects_reply: true
 ```
 
 正文就是普通 markdown，可自由写上下文、请求、解释、补充信息。
@@ -114,7 +113,7 @@ expects_reply: true          # optional
 新信只需在 frontmatter 中增加：
 
 ```yaml
-reply_to: <message_id>
+reply_to: <filename>
 ```
 
 这意味着系统坚持 **append-only**：
