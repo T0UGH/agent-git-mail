@@ -7,6 +7,13 @@
   "bin": {
     "agm": "./dist/index.js"
   },
+  "exports": {
+    ".": "./dist/index.js",
+    "./run-daemon": "./dist/app/run-daemon.js",
+    "./config": "./dist/config/index.js",
+    "./git": "./dist/git/index.js",
+    "./domain": "./dist/domain/index.js"
+  },
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "test": "vitest run",
