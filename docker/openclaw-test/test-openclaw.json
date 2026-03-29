@@ -1,0 +1,34 @@
+{
+  "meta": {
+    "lastTouchedVersion": "2026.3.28"
+  },
+  "auth": {
+    "profiles": {
+      "openai-codex:default": {
+        "provider": "openai-codex",
+        "mode": "oauth"
+      }
+    }
+  },
+  "agents": {
+    "defaults": {
+      "model": {
+        "primary": "openai-codex/gpt-5.4"
+      },
+      "workspace": "/app/workspace",
+      "compaction": {
+        "mode": "safeguard"
+      }
+    }
+  },
+  "tools": {
+    "profile": "coding"
+  },
+  "plugins": {
+    "entries": {
+      "openclaw-agent-git-mail": {
+        "source": "/app/agent-git-mail/packages/openclaw-plugin"
+      }
+    }
+  }
+}

@@ -2,11 +2,7 @@
   "extends": "../../tsconfig.base.json",
   "compilerOptions": {
     "outDir": "./dist",
-    "rootDir": "./src",
-    "paths": {
-      "openclaw": ["/usr/local/lib/node_modules/openclaw/dist/plugin-sdk/plugin-sdk/index.d.ts"],
-      "@agent-git-mail/agm/*": ["../agm/dist/*"]
-    }
+    "rootDir": "./src"
   },
   "include": ["src/**/*"],
   "exclude": ["node_modules", "dist", "test"]

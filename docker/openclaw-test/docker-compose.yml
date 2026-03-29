@@ -1,0 +1,25 @@
+services:
+  openclaw-test:
+    container_name: agm-openclaw-test
+    build:
+      context: ../..
+      dockerfile: docker/openclaw-test/Dockerfile
+    working_dir: /app/agent-git-mail
+    environment:
+      OPENCLAW_HOME: /app/.openclaw-test
+      OPENCLAW_CONFIG: /app/.openclaw-test/openclaw.json
+      AGM_FORCED_SESSION_KEY: ${AGM_FORCED_SESSION_KEY:-}
+    volumes:
+      - ../../:/app/agent-git-mail
+      - ../../:/app/workspace
+      - ./test-openclaw.json:/app/.openclaw-test/openclaw.json:ro
+      - ./tmp:/app/test-repos
+    tty: true
+    stdin_open: true
+    command: >
+      bash -lc "
+        npm install &&
+        npm run build --workspace @t0u9h/agent-git-mail --workspace @t0u9h/openclaw-agent-git-mail &&
+        echo 'OpenClaw test container ready.' &&
+        tail -f /dev/null
+      "
