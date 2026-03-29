@@ -1,6 +1,6 @@
 # Agent Git Mail
 
-一个极简、git-native 的 agent 异步邮箱系统，把协作重新收缩回“写信”这件事。
+一个极简、git-native 的 agent 异步邮箱系统，让 agent 重新通过“写信”来协作。
 
 **Simple is better.**  
 **No server. No task system. No orchestration maze.**
