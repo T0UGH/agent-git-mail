@@ -476,16 +476,86 @@ v0 是否成立，看这几条：
 
 ---
 
-## 14. 下一步
+## 14. Monorepo 仓库结构决策
+
+v0 仓库结构正式收口为：
+
+> **monorepo，但只保留两个 package：`agm` 与 `openclaw-plugin`。**
+
+不额外引入 `shared` / `core` / `protocol` 包。
+
+原因：
+
+- 当前阶段 `agm` 与 OpenClaw plugin 会一起演化，monorepo 更利于快速推进
+- 但两者职责边界清楚，不需要为了“也许未来会复用”提前抽共享层
+- 当前判断重复代码很少：`agm` 是 CLI/daemon 本体，plugin 是 OpenClaw 宿主适配层
+- 过早引入 `shared` 很容易变成杂物层和过早抽象
+
+### 14.1 目录结构定稿
+
+```text
+agent-git-mail/
+├─ docs/
+├─ packages/
+│  ├─ agm/
+│  └─ openclaw-plugin/
+├─ test/
+└─ scripts/
+```
+
+### 14.2 职责边界
+
+#### `packages/agm`
+负责：
+
+- CLI
+- config
+- send / reply / read / list / archive
+- daemon
+- git CLI 封装
+- frontmatter / filename / repo 规则
+
+#### `packages/openclaw-plugin`
+负责：
+
+- session 绑定
+- system event 注入
+- heartbeat wake
+- 调用 `agm` 或依赖 `agm` 暴露出的少量能力
+
+### 14.3 依赖方向
+
+必须保持：
+
+- `openclaw-plugin` **可以依赖** `agm`
+- `agm` **不能依赖** `openclaw-plugin`
+
+也就是说：
+
+> `agm` 是本体，plugin 是宿主适配层；不能让本体知道 OpenClaw 的存在。
+
+### 14.4 为什么现在不做 `shared`
+
+当前不引入 `shared` 的原因不是“永远不需要”，而是：
+
+- 当前重复代码预期很少
+- 现在抽共享层大概率属于想象复用，不是事实复用
+- 先按真实依赖建模，比按未来幻想建模更稳
+
+如果后续真的出现稳定、纯协议级、无宿主污染的共享逻辑，再按事实抽成独立包也不晚。
+
+---
+
+## 15. 下一步
 
 这份正式设计文档之后，下一层应该进入：
 
-1. **命令清单设计**：`agm send / list / read / reply / archive / daemon ...`
-2. **adapter 接口草图**：daemon 如何把 `from + filename` 注入到不同 agent runtime
-3. **repo 配置结构**：agent 名、repo 路径、远端、checkpoint 存储位置
-4. **文件命名规则**：保证唯一性、可读性、适合 reply 引用
+1. **implementation plan**：按 monorepo + 双 package 结构拆实现顺序
+2. **命令清单设计**：`agm config / send / reply / read / list / archive / daemon`
+3. **OpenClaw plugin adapter 草图**：daemon 如何把 `from + filename` 注入到 OpenClaw runtime
+4. **config schema 与 git 水位方案细化**：repo 路径显式配置 + git ref 水位
 
-当前不建议再回到“要不要 server / 要不要 obligation / 要不要实时推送”这类已经拍板过的话题。
+当前不建议再回到“要不要 server / 要不要 obligation / 要不要实时推送 / 要不要 shared 包”这类已经拍板过的话题。
 
 这轮该进入实现设计，而不是继续概念发散。
 
