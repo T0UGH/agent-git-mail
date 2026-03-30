@@ -1,7 +1,7 @@
 import { readdirSync } from 'fs';
 import { resolve } from 'path';
 import { parseFrontmatter } from '../domain/frontmatter.js';
-import { loadConfig } from '../config/load.js';
+import { loadConfig, getAgentRepoPath } from '../config/index.js';
 
 export interface ListOptions {
   agent: string;
@@ -23,11 +23,11 @@ export interface ListEntry {
 export async function listMessages(opts: ListOptions): Promise<ListEntry[]> {
   const config = loadConfig(opts.configPath);
 
-  const agent = config.agents[opts.agent];
-  if (!agent) throw new Error(`Unknown agent: ${opts.agent}`);
+  const repoPath = getAgentRepoPath(config, opts.agent);
+  if (!repoPath) throw new Error(`Unknown agent: ${opts.agent}`);
 
   const dir = opts.dir ?? 'inbox';
-  const dirPath = resolve(agent.repo_path, dir);
+  const dirPath = resolve(repoPath, dir);
 
   let files: string[];
   try {

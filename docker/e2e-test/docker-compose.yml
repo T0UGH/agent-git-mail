@@ -1,0 +1,85 @@
+services:
+  mt:
+    container_name: agm-e2e-mt
+    build:
+      context: ../..
+      dockerfile: docker/e2e-test/Dockerfile
+    working_dir: /workspace
+    environment:
+      OPENCLAW_HOME: /workspace/.openclaw-mt
+      OPENCLAW_CONFIG_PATH: /workspace/.openclaw-mt/openclaw.json
+      AGM_FORCED_SESSION_KEY: ${AGM_FORCED_SESSION_KEY:-agent:main:main}
+      GLM_API_KEY: ${GLM_API_KEY:-}
+    volumes:
+      - agm-mailboxes:/workspace/mailbox
+      - ./mt-openclaw.json:/workspace/.openclaw-mt/openclaw.json:ro
+      - ../../:/workspace/agent-git-mail
+    network_mode: host
+    tty: true
+    stdin_open: true
+    command: >
+      bash -lc "
+        echo '=== MT container starting ===' &&
+        ln -sf /workspace/agent-git-mail/node_modules/.bin/openclaw /usr/local/bin/openclaw &&
+        echo '=== Creating and initializing MT mailbox ===' &&
+        mkdir -p /workspace/mailbox/mt &&
+        git init /workspace/mailbox/mt &&
+        git -C /workspace/mailbox/mt config user.name 'mt-agent' &&
+        git -C /workspace/mailbox/mt config user.email 'mt@e2e.local' &&
+        node /workspace/agent-git-mail/packages/agm/dist/index.js bootstrap --self-id mt --self-repo-path /workspace/mailbox/mt --skip-plugin-install 2>&1 &&
+        echo '=== Configuring MT git remote ===' &&
+        (cd /workspace/mailbox/mt && git remote add hex 'file:///workspace/mailbox/hex/.git' || true) &&
+        echo '=== Starting MT OpenClaw gateway ===' &&
+        nohup openclaw gateway run > /tmp/openclaw-mt.log 2>&1 &
+        sleep 5 &&
+        cat /tmp/openclaw-mt.log | tail -30 &&
+        echo '=== MT ready ===' &&
+        tail -f /dev/null
+      "
+
+  hex:
+    container_name: agm-e2e-hex
+    build:
+      context: ../..
+      dockerfile: docker/e2e-test/Dockerfile
+    working_dir: /workspace
+    environment:
+      OPENCLAW_HOME: /workspace/.openclaw-hex
+      OPENCLAW_CONFIG_PATH: /workspace/.openclaw-hex/openclaw.json
+      AGM_FORCED_SESSION_KEY: ${AGM_FORCED_SESSION_KEY:-agent:main:main}
+      GLM_API_KEY: ${GLM_API_KEY:-}
+    volumes:
+      - agm-mailboxes:/workspace/mailbox
+      - ./hex-openclaw.json:/workspace/.openclaw-hex/openclaw.json:ro
+      - ../../:/workspace/agent-git-mail
+    network_mode: host
+    tty: true
+    stdin_open: true
+    depends_on:
+      mt:
+        condition: service_started
+    command: >
+      bash -lc "
+        echo '=== HEX container starting ===' &&
+        ln -sf /workspace/agent-git-mail/node_modules/.bin/openclaw /usr/local/bin/openclaw &&
+        echo '=== Waiting for MT mailbox to be ready ===' &&
+        until [ -d /workspace/mailbox/mt/.git ]; do sleep 1; done &&
+        echo '=== Creating and initializing HEX mailbox ===' &&
+        mkdir -p /workspace/mailbox/hex &&
+        git init /workspace/mailbox/hex &&
+        git -C /workspace/mailbox/hex config user.name 'hex-agent' &&
+        git -C /workspace/mailbox/hex config user.email 'hex@e2e.local' &&
+        node /workspace/agent-git-mail/packages/agm/dist/index.js bootstrap --self-id hex --self-repo-path /workspace/mailbox/hex --skip-plugin-install 2>&1 &&
+        echo '=== Configuring HEX git remote ===' &&
+        (cd /workspace/mailbox/hex && git remote add mt 'file:///workspace/mailbox/mt/.git' || true) &&
+        echo '=== Starting HEX OpenClaw gateway ===' &&
+        nohup openclaw gateway run > /tmp/openclaw-hex.log 2>&1 &
+        sleep 5 &&
+        cat /tmp/openclaw-hex.log | tail -30 &&
+        echo '=== HEX ready ===' &&
+        tail -f /dev/null
+      "
+
+volumes:
+  agm-mailboxes:
+    name: agm-e2e-mailboxes

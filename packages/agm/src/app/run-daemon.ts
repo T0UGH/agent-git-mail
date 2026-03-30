@@ -4,6 +4,7 @@ import { parseFrontmatter } from '../domain/frontmatter.js';
 import { readFileSync } from 'fs';
 import { resolve } from 'path';
 import type { Config } from '../config/schema.js';
+import { getAgentEntries } from '../config/index.js';
 
 export interface DaemonOptions {
   config: Config;
@@ -13,13 +14,14 @@ export interface DaemonOptions {
 
 export async function runDaemon(opts: DaemonOptions): Promise<void> {
   const pollInterval = (opts.config.runtime?.poll_interval_seconds ?? 30) * 1000;
-  const agents = opts.agentName
-    ? { [opts.agentName]: opts.config.agents[opts.agentName] }
-    : opts.config.agents;
+  const allEntries = getAgentEntries(opts.config);
+  const entries: Array<[string, { repo_path: string }]> = opts.agentName
+    ? allEntries.filter(([name]) => name === opts.agentName).map(([name, repoPath]) => [name, { repo_path: repoPath }])
+    : allEntries.map(([name, repoPath]) => [name, { repo_path: repoPath }]);
 
   if (opts.onNewMail) {
     // One-shot poll for testing
-    await runPoll(Object.entries(agents), opts.onNewMail);
+    await runPoll(entries, opts.onNewMail);
     return;
   }
 
@@ -27,7 +29,7 @@ export async function runDaemon(opts: DaemonOptions): Promise<void> {
   while (true) {
     const start = Date.now();
     try {
-      for (const [name, agent] of Object.entries(agents)) {
+      for (const [name, agent] of entries) {
         await watchAgent(name, agent, opts.onNewMail);
       }
     } catch (e) {

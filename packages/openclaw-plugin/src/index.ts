@@ -1,6 +1,9 @@
 import type { OpenClawPluginApi, OpenClawPluginService } from 'openclaw';
 import type { Config, AgentConfig } from '@t0u9h/agent-git-mail/config';
+import { isConfigV1 } from '@t0u9h/agent-git-mail/config';
 import { SessionBindingStore } from './session-binding.js';
+import { existsSync } from 'fs';
+import { execSync } from 'child_process';
 
 const sessionBindings = new SessionBindingStore();
 
@@ -100,34 +103,53 @@ async function pollOnce(logger: { info(msg: string): void; error(msg: string): v
     return;
   }
 
-  let config: Config | null = null;
-  try {
-    const { loadConfig } = await import('@t0u9h/agent-git-mail/config');
-    config = loadConfig();
-    logger.info(`[agm] stage=config_loaded agents=${Object.keys(config.agents).length}`);
-  } catch (e) {
+  const { loadConfigSafe } = await import('@t0u9h/agent-git-mail/config');
+
+  const result = loadConfigSafe();
+  if (!result.ok) {
     if (logger.warn) {
-      logger.warn('[agm] stage=config_load_failed error=' + String(e));
+      logger.warn('[agm] stage=config_load_failed error=' + String(result.error));
     } else {
-      logger.info('[agm] stage=config_load_failed error=' + String(e));
+      logger.info('[agm] stage=config_load_failed error=' + String(result.error));
     }
     return;
+  }
+  const config = result.data;
+
+  // Preflight check for v1 config: validate self.repo_path
+  if (isConfigV1(config)) {
+    const selfRepoPath = config.self.repo_path;
+    if (!existsSync(selfRepoPath)) {
+      (logger.warn ?? logger.info)(`[agm] stage=preflight_failed reason=missing_self_repo_path id=${config.self.id} path=${selfRepoPath}`);
+      return;
+    }
+    try {
+      execSync('git rev-parse --git-dir', { cwd: selfRepoPath, stdio: 'pipe' });
+    } catch {
+      (logger.warn ?? logger.info)(`[agm] stage=preflight_failed reason=not_a_git_repo id=${config.self.id} path=${selfRepoPath}`);
+      return;
+    }
+    logger.info(`[agm] stage=preflight_passed id=${config.self.id} repo=${selfRepoPath}`);
   }
 
   const { watchAgentOnce } = await import('./watch-agent.js');
 
-  const entries = Object.entries(config.agents) as Array<[string, AgentConfig]>;
+  // Build agent entries: v1 uses self, old format uses agents map
+  const entries: Array<[string, string]> = isConfigV1(config)
+    ? [[config.self.id, config.self.repo_path]]
+    : Object.entries(config.agents as Record<string, AgentConfig>).map(([k, v]) => [k, v.repo_path]);
+
   const forcedSessionKey = process.env.AGM_FORCED_SESSION_KEY ?? null;
-  for (const [name, agent] of entries) {
+  for (const [name, repoPath] of entries) {
     const boundSessionKey = sessionBindings.get(name);
     const { sessionKey, routeSource } = resolveRouteTarget({ forcedSessionKey, boundSessionKey });
 
     logger.info(
-      `[agm] stage=route agent=${name} source=${routeSource} sessionKey=${sessionKey} repo=${agent.repo_path}`,
+      `[agm] stage=route agent=${name} source=${routeSource} sessionKey=${sessionKey} repo=${repoPath}`,
     );
 
     try {
-      await watchAgentOnce(name, agent.repo_path, logger, async (mail) => {
+      await watchAgentOnce(name, repoPath, logger, async (mail) => {
         const text = `New agent git mail: from=${mail.from}, file=${mail.filename}`;
         logger.info(
           `[agm] stage=deliver_prepare agent=${name} sessionKey=${sessionKey} file=${mail.filename} from=${mail.from}`,
@@ -143,7 +165,7 @@ async function pollOnce(logger: { info(msg: string): void; error(msg: string): v
       });
     } catch (e) {
       logger.error(
-        `[agm] stage=watch_agent_error agent=${name} repo=${agent.repo_path} error=${String(e)}`,
+        `[agm] stage=watch_agent_error agent=${name} repo=${repoPath} error=${String(e)}`,
       );
     }
   }

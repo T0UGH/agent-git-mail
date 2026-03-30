@@ -6,6 +6,7 @@ import { cmdReply } from './cli/commands/reply.js';
 import { cmdRead } from './cli/commands/read.js';
 import { cmdList } from './cli/commands/list.js';
 import { cmdArchive } from './cli/commands/archive.js';
+import { cmdBootstrap } from './cli/commands/bootstrap.js';
 
 const subcommands: Record<string, (argv: Record<string, unknown>) => Promise<void>> = {
   config: async () => {
@@ -41,6 +42,17 @@ const subcommands: Record<string, (argv: Record<string, unknown>) => Promise<voi
     const { loadConfig } = await import('./config/load.js');
     const config = loadConfig();
     await runDaemon({ config });
+  },
+  bootstrap: async (argv) => {
+    const opts = {
+      selfId: String(argv['selfId'] ?? ''),
+      selfRepoPath: String(argv['selfRepoPath'] ?? ''),
+      configPath: argv['configPath'] ? String(argv['configPath']) : undefined,
+      skipPluginInstall: argv['skipPluginInstall'] === true,
+      dryRun: argv['dryRun'] === true,
+      json: argv['json'] === true,
+    };
+    await cmdBootstrap(opts);
   },
 };
 
@@ -134,11 +146,21 @@ Subcommands:
   list --agent <a> [--dir inbox|outbox|archive] [--format table|json]
   archive <filename.md> --agent <a>
   daemon                   Run the mail daemon
+  bootstrap                Bootstrap AGM (self + plugin installation)
+
+Bootstrap options:
+  --self-id <id>          Required. Your agent / user ID.
+  --self-repo-path <path> Required. Path to your mailbox git repo.
+  --config-path <path>    Optional. Custom config path.
+  --skip-plugin-install   Optional. Skip plugin installation.
+  --dry-run              Optional. Print what would be done without writing.
+  --json                 Optional. Output machine-readable JSON.
 
 Examples:
   agm config show
-  agm send --from mt --to hex --subject "Hello" --body-file ./body.txt
-  agm list --agent mt --dir inbox
+  agm bootstrap --self-id mt --self-repo-path /path/to/mailbox
+  agm bootstrap --self-id hex --self-repo-path /path/to/mailbox --dry-run
+  agm bootstrap --self-id mt --self-repo-path /path/to/mailbox --json
 `);
 }
 

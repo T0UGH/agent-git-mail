@@ -4,6 +4,7 @@ import { GitRepo } from '../git/repo.js';
 import { generateFilename, generateUniqueSuffix } from '../domain/filename.js';
 import { serializeFrontmatter, type MessageFrontmatter } from '../domain/frontmatter.js';
 import { loadConfig } from '../config/load.js';
+import { getAgentRepoPath } from '../config/index.js';
 import { maybePush } from './git-push.js';
 import { ensureGitIdentity, ensureMaildirs } from '../git/preflight.js';
 
@@ -20,10 +21,10 @@ export interface SendOptions {
 export async function sendMessage(opts: SendOptions): Promise<{ filename: string }> {
   const config = loadConfig(opts.configPath);
 
-  const fromAgent = config.agents[opts.from];
-  const toAgent = config.agents[opts.to];
-  if (!fromAgent) throw new Error(`Unknown agent: ${opts.from}`);
-  if (!toAgent) throw new Error(`Unknown agent: ${opts.to}`);
+  const fromRepo = getAgentRepoPath(config, opts.from);
+  const toRepo = getAgentRepoPath(config, opts.to);
+  if (!fromRepo) throw new Error(`Unknown agent: ${opts.from}`);
+  if (!toRepo) throw new Error(`Unknown agent: ${opts.to}`);
 
   const body = readFileSync(resolve(opts.bodyFile), 'utf-8');
   const createdAt = new Date().toISOString().replace(/\.\d{3}/, '').replace(/:/g, '-');
@@ -39,13 +40,13 @@ export async function sendMessage(opts: SendOptions): Promise<{ filename: string
     expects_reply: opts.expectsReply ?? false,
   };
 
-  await ensureMaildirs(fromAgent.repo_path);
-  await ensureMaildirs(toAgent.repo_path);
-  await ensureGitIdentity(fromAgent.repo_path);
-  await ensureGitIdentity(toAgent.repo_path);
+  await ensureMaildirs(fromRepo);
+  await ensureMaildirs(toRepo);
+  await ensureGitIdentity(fromRepo);
+  await ensureGitIdentity(toRepo);
 
-  const senderRepo = new GitRepo(fromAgent.repo_path);
-  const recipientRepo = new GitRepo(toAgent.repo_path);
+  const senderRepo = new GitRepo(fromRepo);
+  const recipientRepo = new GitRepo(toRepo);
 
   // Write to sender outbox
   const senderContent = serializeFrontmatter(frontmatter) + '\n\n' + body;

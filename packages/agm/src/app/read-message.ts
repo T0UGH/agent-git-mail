@@ -10,14 +10,14 @@ export interface ReadOptions {
 }
 
 export async function readMessage(opts: ReadOptions): Promise<{ frontmatter: MessageFrontmatter; body: string }> {
-  const { loadConfig } = await import('../config/load.js');
+  const { loadConfig, getAgentRepoPath } = await import('../config/index.js');
   const config = loadConfig(opts.configPath);
 
-  const agent = config.agents[opts.agent];
-  if (!agent) throw new Error(`Unknown agent: ${opts.agent}`);
+  const repoPath = getAgentRepoPath(config, opts.agent);
+  if (!repoPath) throw new Error(`Unknown agent: ${opts.agent}`);
 
   const dir = opts.dir ?? 'inbox';
-  const filePath = resolve(agent.repo_path, dir, opts.filename);
+  const filePath = resolve(repoPath, dir, opts.filename);
   const raw = readFileSync(filePath, 'utf-8');
   const parsed = parseFrontmatter(raw);
 
