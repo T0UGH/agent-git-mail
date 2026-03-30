@@ -39,14 +39,25 @@
 
 ## 3.1 测试角色
 
-- sender agent：`hex`
-- receiver agent：`mt`
+本轮不用 `mt` / `hex`，统一改用两个隔离测试 agent：
+
+- sender agent：`atlas`
+- receiver agent：`boron`
+
+后续双向测试时也要覆盖：
+- `atlas -> boron`
+- `boron -> atlas`
 
 ## 3.2 测试 repo
 
-准备两个独立 git repo：
-- `mt-repo`
-- `hex-repo`
+本轮使用两个**真实远程 GitHub 私有仓库**作为测试 mailbox：
+
+- `T0UGH/test-mailbox-a` → agent `atlas`
+- `T0UGH/test-mailbox-b` → agent `boron`
+
+本地执行时分别 clone 成独立工作目录，例如：
+- `test-mailbox-a-worktree`
+- `test-mailbox-b-worktree`
 
 每个 repo 至少包含：
 - `inbox/`
@@ -54,8 +65,21 @@
 
 要求：
 - 都是干净工作树
-- 都能正常 `git add / commit`
+- 都能正常 `git add / commit / push / pull`
 - OpenClaw plugin 配置中的 agent -> repo_path 映射明确可读
+- 测试必须基于**真实 remote push/pull**，不能只在本地裸目录里自转
+
+## 3.3 Docker 约束
+
+本轮默认在 Docker 环境中执行主验证链路，而不是直接复用宿主机现有长期状态。
+
+目标是降低环境噪音，验证：
+- `agm` CLI 在容器中是否可用
+- daemon / waterline 在容器中是否可用
+- OpenClaw plugin 在容器中是否能基于真实 git remote 检测新信
+- 新信提醒是否能进入目标 session
+
+因此后续所有通过标准，默认以 **Docker 内运行结果 + 真实远程仓库状态** 为主证据。
 
 ## 3.3 证据要求
 
@@ -75,13 +99,13 @@
 **目标**：证明 `agm send` 能把一封新信写进目标 repo 的 `inbox/`，并形成 git 提交。
 
 **步骤**：
-1. 在 `hex` 身份下执行 `agm send --from hex --to mt ...`
-2. 检查 `mt-repo/inbox/` 是否出现新文件
+1. 在 `atlas` 身份下执行 `agm send --from atlas --to boron ...`
+2. 检查 `boron` 对应 repo（`T0UGH/test-mailbox-b` 的本地 clone）中的 `inbox/` 是否出现新文件
 3. 检查 frontmatter 是否完整（`from/to/subject/created_at` 等）
 4. 检查 git 历史中是否出现对应 commit
 
 **通过标准**：
-- `mt inbox/` 出现新文件
+- `boron` repo 的 `inbox/` 出现新文件
 - 文件 frontmatter 合法
 - git commit 存在
 
@@ -92,7 +116,7 @@
 **目标**：证明收件方能看到刚收到的信。
 
 **步骤**：
-1. 在 `mt` 身份下执行列信命令（如 `agm list --agent mt --dir inbox`）
+1. 在 `boron` 身份下执行列信命令（如 `agm list --agent boron --dir inbox`）
 2. 必要时读取该信正文
 3. 校验 subject / from / filename 一致
 
@@ -108,12 +132,12 @@
 
 **步骤**：
 1. 用 A1 产出的 filename 作为 reply 目标
-2. 以 `mt` 身份执行 `agm reply <filename> --from mt ...`
-3. 检查 `hex-repo/inbox/` 是否出现回信
+2. 以 `boron` 身份执行 `agm reply <filename> --from boron ...`
+3. 检查 `atlas` 对应 repo（`T0UGH/test-mailbox-a` 的本地 clone）中的 `inbox/` 是否出现回信
 4. 校验回信 frontmatter 中的 `reply_to` 是否指向原始 filename
 
 **通过标准**：
-- `hex inbox/` 出现回信文件
+- `atlas` repo 的 `inbox/` 出现回信文件
 - `reply_to` 正确指向原信
 - git commit 存在
 
@@ -124,7 +148,7 @@
 **目标**：证明 `agm archive` 只影响本地工作视图，不破坏原始通信关系。
 
 **步骤**：
-1. 以 `mt` 身份归档 A1 中收到的信
+1. 以 `boron` 身份归档 A1 中收到的信
 2. 检查文件是否从 `inbox/` 移到 `archive/`
 3. 检查 git commit 是否存在
 4. 检查 reply 关系文件不受影响
@@ -222,10 +246,10 @@
 **目标**：验证“发信 -> plugin 检测 -> session 看见提醒”整条路径。
 
 **步骤**：
-1. `hex -> mt` 发一封新信
+1. `atlas -> boron` 发一封新信
 2. plugin 检测并 inject / wake
-3. `mt` 会话内看到提醒
-4. `mt` 使用 CLI 读取并回信
+3. `boron` 对应会话内看到提醒
+4. `boron` 使用 CLI 读取并回信
 
 **通过标准**：
 - session 能看到提醒
