@@ -6,6 +6,19 @@ const sessionBindings = new SessionBindingStore();
 
 let pluginRuntime: OpenClawPluginApi['runtime'] | null = null;
 
+export function resolveRouteTarget(opts: {
+  forcedSessionKey: string | null;
+  boundSessionKey: string | undefined;
+}): { sessionKey: string; routeSource: 'forced-env' | 'binding' | 'default-main' } {
+  if (opts.forcedSessionKey) {
+    return { sessionKey: opts.forcedSessionKey, routeSource: 'forced-env' };
+  }
+  if (opts.boundSessionKey) {
+    return { sessionKey: opts.boundSessionKey, routeSource: 'binding' };
+  }
+  return { sessionKey: 'agent:main:main', routeSource: 'default-main' };
+}
+
 const plugin = {
   id: 'openclaw-agent-git-mail',
   name: 'Agent Git Mail',
@@ -107,14 +120,11 @@ async function pollOnce(logger: { info(msg: string): void; error(msg: string): v
   const forcedSessionKey = process.env.AGM_FORCED_SESSION_KEY ?? null;
   for (const [name, agent] of entries) {
     const boundSessionKey = sessionBindings.get(name);
-    const sessionKey = forcedSessionKey ?? boundSessionKey;
-    const routeSource = forcedSessionKey ? 'forced-env' : boundSessionKey ? 'binding' : 'missing';
+    const { sessionKey, routeSource } = resolveRouteTarget({ forcedSessionKey, boundSessionKey });
 
     logger.info(
-      `[agm] stage=route agent=${name} source=${routeSource} sessionKey=${sessionKey ?? 'none'} repo=${agent.repo_path}`,
+      `[agm] stage=route agent=${name} source=${routeSource} sessionKey=${sessionKey} repo=${agent.repo_path}`,
     );
-
-    if (!sessionKey) continue;
 
     try {
       await watchAgentOnce(name, agent.repo_path, logger, async (mail) => {
