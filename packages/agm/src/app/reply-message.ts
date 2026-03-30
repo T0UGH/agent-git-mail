@@ -4,6 +4,8 @@ import { GitRepo } from '../git/repo.js';
 import { generateFilename, generateUniqueSuffix } from '../domain/filename.js';
 import { serializeFrontmatter, type MessageFrontmatter, parseFrontmatter } from '../domain/frontmatter.js';
 import { loadConfig } from '../config/load.js';
+import { maybePush } from './git-push.js';
+import { ensureGitIdentity, ensureMaildirs } from '../git/preflight.js';
 
 export interface ReplyOptions {
   originalFilename: string;
@@ -64,6 +66,11 @@ export async function replyMessage(opts: ReplyOptions): Promise<{ filename: stri
     expects_reply: false,
   };
 
+  await ensureMaildirs(fromAgent.repo_path);
+  await ensureMaildirs(toAgent.repo_path);
+  await ensureGitIdentity(fromAgent.repo_path);
+  await ensureGitIdentity(toAgent.repo_path);
+
   const senderRepo = new GitRepo(fromAgent.repo_path);
   const recipientRepo = new GitRepo(toAgent.repo_path);
 
@@ -82,14 +89,6 @@ export async function replyMessage(opts: ReplyOptions): Promise<{ filename: stri
   await maybePush(recipientRepo);
 
   return { filename };
-}
-
-async function maybePush(repo: GitRepo): Promise<void> {
-  try {
-    await repo.push();
-  } catch {
-    // No remote
-  }
 }
 
 async function writeFileAtomic(path: string, content: string): Promise<void> {

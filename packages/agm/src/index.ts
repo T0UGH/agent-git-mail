@@ -44,15 +44,31 @@ const subcommands: Record<string, (argv: Record<string, unknown>) => Promise<voi
   },
 };
 
-function parseArgs(): { subcommand: string; argv: Record<string, unknown> } {
-  const args = process.argv.slice(2);
+function toCamelCase(key: string): string {
+  return key.replace(/-([a-z])/g, (_, ch: string) => ch.toUpperCase());
+}
+
+function positionalKeyFor(subcommand: string): string | null {
+  switch (subcommand) {
+    case 'reply':
+      return 'originalFilename';
+    case 'read':
+    case 'archive':
+      return 'filename';
+    default:
+      return null;
+  }
+}
+
+export function parseArgv(args: string[]): { subcommand: string; argv: Record<string, unknown> } {
   const subcommand = args[0] ?? 'help';
   const argv: Record<string, unknown> = {};
+  const positional: string[] = [];
 
   for (let i = 1; i < args.length; i++) {
     const arg = args[i];
     if (arg.startsWith('--')) {
-      const key = arg.slice(2);
+      const key = toCamelCase(arg.slice(2));
       const next = args[i + 1];
       if (next && !next.startsWith('--')) {
         argv[key] = next;
@@ -61,12 +77,23 @@ function parseArgs(): { subcommand: string; argv: Record<string, unknown> } {
         argv[key] = true;
       }
     } else if (arg.startsWith('-')) {
-      const key = arg.slice(1);
+      const key = toCamelCase(arg.slice(1));
       argv[key] = true;
+    } else {
+      positional.push(arg);
     }
   }
 
+  const positionalKey = positionalKeyFor(subcommand);
+  if (positionalKey && positional[0] !== undefined) {
+    argv[positionalKey] = positional[0];
+  }
+
   return { subcommand, argv };
+}
+
+function parseArgs(): { subcommand: string; argv: Record<string, unknown> } {
+  return parseArgv(process.argv.slice(2));
 }
 
 async function main() {
@@ -115,4 +142,6 @@ Examples:
 `);
 }
 
-main();
+if (import.meta.url === new URL(process.argv[1], 'file:').href) {
+  main();
+}

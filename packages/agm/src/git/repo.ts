@@ -34,6 +34,11 @@ export class GitRepo {
     return stdout;
   }
 
+  async commitStaged(message: string): Promise<string> {
+    const stdout = this.run(['commit', '-m', message]);
+    return stdout;
+  }
+
   async push(): Promise<void> {
     try {
       this.run(['push']);

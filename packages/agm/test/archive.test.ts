@@ -63,7 +63,7 @@ describe('archive E2E', () => {
     expect(archiveFiles).toContain(filename);
   });
 
-  it('commit only contains the moved file', async () => {
+  it('commit contains both inbox removal and archive addition', async () => {
     const commitsBefore = execSync(`git -C ${hexRepo} log --oneline`, { encoding: 'utf-8' }).trim().split('\n').filter(Boolean);
 
     await archiveMessage({ filename, agent: 'hex', configPath });
@@ -71,9 +71,14 @@ describe('archive E2E', () => {
     const commitsAfter = execSync(`git -C ${hexRepo} log --oneline`, { encoding: 'utf-8' }).trim().split('\n').filter(Boolean);
     expect(commitsAfter.length - commitsBefore.length).toBe(1);
 
-    const diff = execSync(`git -C ${hexRepo} diff HEAD~1 --name-only`, { encoding: 'utf-8' }).trim().split('\n').filter(Boolean);
-    expect(diff.length).toBe(1);
-    expect(diff[0]).toContain('archive/');
+    const diff = execSync(`git -C ${hexRepo} diff --name-status HEAD~1 HEAD`, { encoding: 'utf-8' }).trim().split('\n').filter(Boolean);
+    expect(diff.length).toBeGreaterThanOrEqual(1);
+
+    const hasRename = diff.some(line => line.startsWith('R') && line.includes(`inbox/${filename}`) && line.includes(`archive/${filename}`));
+    const hasSeparateArchiveAdd = diff.some(line => line.startsWith('A') && line.includes(`archive/${filename}`));
+    const hasSeparateInboxDelete = diff.some(line => line.startsWith('D') && line.includes(`inbox/${filename}`));
+
+    expect(hasRename || (hasSeparateArchiveAdd && hasSeparateInboxDelete)).toBe(true);
   });
 
   afterAll(() => {
