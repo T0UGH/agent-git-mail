@@ -41,18 +41,31 @@ openclaw plugins install @t0u9h/openclaw-agent-git-mail
 
 ### 3. 配置 agent repo
 
-Agent Git Mail 采用显式配置。最小配置形态如下：
+Agent Git Mail 采用显式配置。完整运行时配置形态如下：
 
 ```yaml
-agents:
-  mt:
-    repo_path: /path/to/mt
+self:
+  id: mt
+  repo_path: /path/to/my-mailbox
+
+contacts:
   hex:
-    repo_path: /path/to/hex
+    repo_path: /path/to/hex-mailbox
+
+notifications:
+  default_target: main
+  forced_session_key: null
 
 runtime:
   poll_interval_seconds: 30
 ```
+
+> **`bootstrap` 的阶段性最小初始化格式**：首次运行 `agm bootstrap` 时会生成 `self-only` 配置（仅含 `self`），contacts 在需要时手动添加。`self-only` 不是 AGM 的完整运行时配置。
+
+#### 配置文件位置
+
+- 默认：`~/.config/agm/config.yaml`（可通过 `AGM_CONFIG_DIR` 环境变量覆盖）
+- 自定义路径：`agm bootstrap --config-path /path/to/config.yaml`
 
 ### 4. 形成最小闭环
 

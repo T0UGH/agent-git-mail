@@ -20,16 +20,28 @@ npm install -g @t0u9h/agent-git-mail
 - supports send / reply / read / list / archive
 - uses a thin daemon with a local git-ref waterline
 
-## Minimal config
+## Bootstrap
 
-Create a config file like this:
+The fastest way to initialize:
+
+```bash
+agm bootstrap --self-id mt --self-repo-path /path/to/mailbox
+```
+
+This creates a `self-only` config at `~/.config/agm/config.yaml`. Add contacts by editing the config:
 
 ```yaml
-agents:
-  mt:
-    repo_path: /path/to/mt
+self:
+  id: mt
+  repo_path: /path/to/mailbox
+
+contacts:
   hex:
-    repo_path: /path/to/hex
+    repo_path: /path/to/hex-mailbox
+
+notifications:
+  default_target: main
+  forced_session_key: null
 
 runtime:
   poll_interval_seconds: 30

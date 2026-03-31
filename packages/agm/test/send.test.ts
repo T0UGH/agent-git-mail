@@ -6,11 +6,11 @@ import { join } from 'path';
 import { sendMessage } from '../src/app/send-message.js';
 
 function makeConfig(repo1: string, repo2: string, name1: string, name2: string): string {
-  return `agents:
-  ${name1}:
-    repo_path: ${repo1}
-  ${name2}:
-    repo_path: ${repo2}
+  return `self:
+  id: ${name1}
+  repo_path: ${repo1}
+contacts:
+  ${name2}: ${repo2}
 `;
 }
 

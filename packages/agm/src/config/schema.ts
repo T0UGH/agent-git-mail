@@ -20,8 +20,11 @@ export const RuntimeConfigSchema = z.object({
   poll_interval_seconds: z.number().optional().default(30),
 });
 
+export const ContactsConfigSchema = z.record(z.string(), z.string().min(1));
+
 export const ConfigSchemaV1 = z.object({
   self: SelfConfigSchema,
+  contacts: ContactsConfigSchema.optional().default({}),
   notifications: NotificationsConfigSchema.optional().default({}),
   runtime: RuntimeConfigSchema.optional().default({}),
 });
@@ -40,6 +43,7 @@ export type AgentConfig = z.infer<typeof AgentConfigSchema>;
 export type SelfConfig = z.infer<typeof SelfConfigSchema>;
 export type NotificationsConfig = z.infer<typeof NotificationsConfigSchema>;
 export type RuntimeConfig = z.infer<typeof RuntimeConfigSchema>;
+export type ContactsConfig = z.infer<typeof ContactsConfigSchema>;
 
 /** True if the config is the new v1 format (has self) */
 export function isConfigV1(c: Config): c is ConfigV1 {
@@ -49,7 +53,11 @@ export function isConfigV1(c: Config): c is ConfigV1 {
 /** Returns agent entries regardless of config format (v0 or v1) */
 export function getAgentEntries(c: Config): Array<[string, string]> {
   if (isConfigV1(c)) {
-    return [[c.self.id, c.self.repo_path]];
+    const entries: Array<[string, string]> = [[c.self.id, c.self.repo_path]];
+    for (const [name, repoPath] of Object.entries(c.contacts)) {
+      entries.push([name, repoPath]);
+    }
+    return entries;
   }
   return Object.entries(c.agents as Record<string, { repo_path: string }>).map(
     ([k, v]) => [k, v.repo_path],
@@ -59,7 +67,8 @@ export function getAgentEntries(c: Config): Array<[string, string]> {
 /** Looks up repo_path by agent name, returns null if not found */
 export function getAgentRepoPath(c: Config, name: string): string | null {
   if (isConfigV1(c)) {
-    return c.self.id === name ? c.self.repo_path : null;
+    if (c.self.id === name) return c.self.repo_path;
+    return c.contacts[name] ?? null;
   }
   return (c.agents as Record<string, { repo_path: string }>)[name]?.repo_path ?? null;
 }

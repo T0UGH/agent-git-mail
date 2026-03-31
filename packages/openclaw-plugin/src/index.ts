@@ -1,6 +1,6 @@
 import type { OpenClawPluginApi, OpenClawPluginService } from 'openclaw';
 import type { Config, AgentConfig } from '@t0u9h/agent-git-mail/config';
-import { isConfigV1 } from '@t0u9h/agent-git-mail/config';
+import { isConfigV1, getAgentEntries } from '@t0u9h/agent-git-mail/config';
 import { SessionBindingStore } from './session-binding.js';
 import { existsSync } from 'fs';
 import { execSync } from 'child_process';
@@ -134,10 +134,8 @@ async function pollOnce(logger: { info(msg: string): void; error(msg: string): v
 
   const { watchAgentOnce } = await import('./watch-agent.js');
 
-  // Build agent entries: v1 uses self, old format uses agents map
-  const entries: Array<[string, string]> = isConfigV1(config)
-    ? [[config.self.id, config.self.repo_path]]
-    : Object.entries(config.agents as Record<string, AgentConfig>).map(([k, v]) => [k, v.repo_path]);
+  // Build agent entries using getAgentEntries (handles v1 self+contacts and old agents map)
+  const entries = getAgentEntries(config);
 
   const forcedSessionKey = process.env.AGM_FORCED_SESSION_KEY ?? null;
   for (const [name, repoPath] of entries) {

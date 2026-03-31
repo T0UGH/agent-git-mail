@@ -1,7 +1,8 @@
 import { existsSync } from 'fs';
 import { execSync } from 'child_process';
+import { dirname } from 'path';
 import { stringify as stringifyYaml } from 'yaml';
-import { loadConfigSafe, isConfigV1, getConfigPath, getConfigDir, type ConfigV1 } from '../../config/index.js';
+import { loadConfigSafe, isConfigV1, getConfigPath, type ConfigV1 } from '../../config/index.js';
 
 // --- Exit codes ---
 export const EXIT_INPUT_ERROR = 2;
@@ -27,8 +28,18 @@ interface CheckResult {
   details?: Record<string, unknown>;
 }
 
+// Detected openclaw command (openclaw or openclaw-gateway)
+let detectedOpenClawCmd: string | null = null;
+
+function detectOpenClawCommand(): string | null {
+  if (detectedOpenClawCmd) return detectedOpenClawCmd;
+  if (commandExists('openclaw')) { detectedOpenClawCmd = 'openclaw'; return 'openclaw'; }
+  if (commandExists('openclaw-gateway')) { detectedOpenClawCmd = 'openclaw-gateway'; return 'openclaw-gateway'; }
+  return null;
+}
+
 function checkSystemDeps(): CheckResult {
-  const deps = ['git', 'node', 'npm', 'openclaw'];
+  const deps = ['git', 'node', 'npm'];
   for (const dep of deps) {
     try {
       execSync(`${dep} --version`, { stdio: 'pipe' });
@@ -42,7 +53,26 @@ function checkSystemDeps(): CheckResult {
       };
     }
   }
+  const openclawCmd = detectOpenClawCommand();
+  if (!openclawCmd) {
+    return {
+      ok: false,
+      code: EXIT_ENV_MISSING,
+      status: 'environment_missing',
+      message: 'Missing system dependency: openclaw or openclaw-gateway',
+      details: { missing: 'openclaw' },
+    };
+  }
   return { ok: true, code: 0, status: 'ok', message: 'All system dependencies present' };
+}
+
+function commandExists(cmd: string): boolean {
+  try {
+    execSync(`${cmd} --version`, { stdio: 'pipe' });
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 function checkRepoPath(repoPath: string): CheckResult {
@@ -110,6 +140,7 @@ function buildConfigYaml(selfId: string, selfRepoPath: string): string {
       id: selfId,
       repo_path: selfRepoPath,
     },
+    contacts: {},
     notifications: {
       default_target: 'main',
       forced_session_key: null,
@@ -122,8 +153,18 @@ function buildConfigYaml(selfId: string, selfRepoPath: string): string {
 }
 
 function installPlugin(): CheckResult {
+  const cmd = detectOpenClawCommand();
+  if (!cmd) {
+    return {
+      ok: false,
+      code: EXIT_PLUGIN_INSTALL_FAILED,
+      status: 'plugin_install_failed',
+      message: 'openclaw command not found',
+      details: { error: 'neither openclaw nor openclaw-gateway found' },
+    };
+  }
   try {
-    execSync('openclaw plugins install @t0u9h/openclaw-agent-git-mail', {
+    execSync(`${cmd} plugins install @t0u9h/openclaw-agent-git-mail`, {
       stdio: 'pipe',
       timeout: 60_000,
     });
@@ -245,12 +286,11 @@ export async function cmdBootstrap(argv: BootstrapOptions): Promise<void> {
   }
 
   // 7. Write config
-  const { mkdirSync } = await import('fs');
-  const configDir = getConfigDir();
+  const { mkdirSync, writeFileSync } = await import('fs');
+  const configDir = dirname(targetConfigPath);
   mkdirSync(configDir, { recursive: true });
 
   const configYaml = buildConfigYaml(selfId, selfRepoPath);
-  const { writeFileSync } = await import('fs');
   writeFileSync(targetConfigPath, configYaml, 'utf-8');
 
   const result: CheckResult & { configPath: string; selfId: string; selfRepoPath: string; pluginInstalled: boolean } = {
