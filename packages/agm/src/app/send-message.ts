@@ -4,7 +4,7 @@ import { GitRepo } from '../git/repo.js';
 import { generateFilename, generateUniqueSuffix } from '../domain/filename.js';
 import { serializeFrontmatter, type MessageFrontmatter } from '../domain/frontmatter.js';
 import { loadConfig } from '../config/load.js';
-import { getAgentRepoPath } from '../config/index.js';
+import { getAgentRepoPath, unknownAgentError } from '../config/index.js';
 import { maybePush } from './git-push.js';
 import { ensureGitIdentity, ensureMaildirs } from '../git/preflight.js';
 
@@ -23,8 +23,8 @@ export async function sendMessage(opts: SendOptions): Promise<{ filename: string
 
   const fromRepo = getAgentRepoPath(config, opts.from);
   const toRepo = getAgentRepoPath(config, opts.to);
-  if (!fromRepo) throw new Error(`Unknown agent: ${opts.from}`);
-  if (!toRepo) throw new Error(`Unknown agent: ${opts.to}`);
+  if (!fromRepo) unknownAgentError(opts.from, config);
+  if (!toRepo) unknownAgentError(opts.to, config);
 
   const body = readFileSync(resolve(opts.bodyFile), 'utf-8');
   const createdAt = new Date().toISOString().replace(/\.\d{3}/, '').replace(/:/g, '-');

@@ -72,3 +72,26 @@ export function getAgentRepoPath(c: Config, name: string): string | null {
   }
   return (c.agents as Record<string, { repo_path: string }>)[name]?.repo_path ?? null;
 }
+
+/** Throws a human-readable error for an unknown agent */
+export function unknownAgentError(agentName: string, config: Config): never {
+  if (isConfigV1(config)) {
+    const selfId = config.self.id;
+    const contactsKeys = Object.keys(config.contacts);
+    const hasContacts = contactsKeys.length > 0;
+    let hint = '';
+    if (selfId === agentName) {
+      hint = `\n\nHint: "${agentName}" is your own agent ID (self). You cannot send a message to yourself.`;
+    } else if (!hasContacts) {
+      hint = `\n\nHint: Your config has no contacts yet. Add this to your config file:\ncontacts:\n  ${agentName}: /path/to/${agentName}-mailbox`;
+    } else {
+      hint = `\n\nHint: "${agentName}" is not in your contacts. Add this to your config file:\ncontacts:\n  ${agentName}: /path/to/${agentName}-mailbox\n\nYour current contacts: ${contactsKeys.join(', ') || '(none)'}`;
+    }
+    throw new Error(`Unknown agent: ${agentName}${hint}`);
+  }
+  // Old format
+  const agents = Object.keys(config.agents as Record<string, unknown>);
+  throw new Error(
+    `Unknown agent: ${agentName}\n\nHint: "${agentName}" is not defined in your config.\nYour agents: ${agents.join(', ')}\n\nConfig format:\nagents:\n  ${agentName}:\n    repo_path: /path/to/${agentName}-mailbox`,
+  );
+}

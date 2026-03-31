@@ -1,7 +1,7 @@
 import { readdirSync } from 'fs';
 import { resolve } from 'path';
 import { parseFrontmatter } from '../domain/frontmatter.js';
-import { loadConfig, getAgentRepoPath } from '../config/index.js';
+import { loadConfig, getAgentRepoPath, unknownAgentError } from '../config/index.js';
 
 export interface ListOptions {
   agent: string;
@@ -24,7 +24,7 @@ export async function listMessages(opts: ListOptions): Promise<ListEntry[]> {
   const config = loadConfig(opts.configPath);
 
   const repoPath = getAgentRepoPath(config, opts.agent);
-  if (!repoPath) throw new Error(`Unknown agent: ${opts.agent}`);
+  if (!repoPath) unknownAgentError(opts.agent, config);
 
   const dir = opts.dir ?? 'inbox';
   const dirPath = resolve(repoPath, dir);

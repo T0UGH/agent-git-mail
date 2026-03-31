@@ -7,6 +7,7 @@ export {
   isConfigV1,
   getAgentEntries,
   getAgentRepoPath,
+  unknownAgentError,
   type Config,
   type ConfigV1,
   type AgentConfig,

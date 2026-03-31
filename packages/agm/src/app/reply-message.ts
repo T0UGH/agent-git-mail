@@ -4,7 +4,7 @@ import { GitRepo } from '../git/repo.js';
 import { generateFilename, generateUniqueSuffix } from '../domain/filename.js';
 import { serializeFrontmatter, type MessageFrontmatter, parseFrontmatter } from '../domain/frontmatter.js';
 import { loadConfig } from '../config/load.js';
-import { getAgentRepoPath } from '../config/index.js';
+import { getAgentRepoPath, unknownAgentError } from '../config/index.js';
 import { maybePush } from './git-push.js';
 import { ensureGitIdentity, ensureMaildirs } from '../git/preflight.js';
 
@@ -20,7 +20,7 @@ export async function replyMessage(opts: ReplyOptions): Promise<{ filename: stri
   const config = loadConfig(opts.configPath);
 
   const fromRepo = getAgentRepoPath(config, opts.from);
-  if (!fromRepo) throw new Error(`Unknown agent: ${opts.from}`);
+  if (!fromRepo) unknownAgentError(opts.from, config);
 
   const dir = opts.dir ?? 'inbox';
   // Find the original message in sender's outbox or inbox
@@ -51,7 +51,7 @@ export async function replyMessage(opts: ReplyOptions): Promise<{ filename: stri
   const to = original.from;
 
   const toRepo = getAgentRepoPath(config, to);
-  if (!toRepo) throw new Error(`Unknown agent: ${to}`);
+  if (!toRepo) unknownAgentError(to, config);
 
   const body = readFileSync(resolve(opts.bodyFile), 'utf-8');
   const createdAt = new Date().toISOString().replace(/\.\d{3}/, '').replace(/:/g, '-');

@@ -27,6 +27,8 @@ services:
         git -C /workspace/mailbox/mt config user.name 'mt-agent' &&
         git -C /workspace/mailbox/mt config user.email 'mt@e2e.local' &&
         node /workspace/agent-git-mail/packages/agm/dist/index.js bootstrap --self-id mt --self-repo-path /workspace/mailbox/mt --skip-plugin-install 2>&1 &&
+        echo '=== Adding HEX contact to MT config ===' &&
+        node /workspace/agent-git-mail/docker/e2e-test/update-config.js hex /workspace/mailbox/hex &&
         echo '=== Configuring MT git remote ===' &&
         (cd /workspace/mailbox/mt && git remote add hex 'file:///workspace/mailbox/hex/.git' || true) &&
         echo '=== Starting MT OpenClaw gateway ===' &&
@@ -70,6 +72,8 @@ services:
         git -C /workspace/mailbox/hex config user.name 'hex-agent' &&
         git -C /workspace/mailbox/hex config user.email 'hex@e2e.local' &&
         node /workspace/agent-git-mail/packages/agm/dist/index.js bootstrap --self-id hex --self-repo-path /workspace/mailbox/hex --skip-plugin-install 2>&1 &&
+        echo '=== Adding MT contact to HEX config ===' &&
+        node /workspace/agent-git-mail/docker/e2e-test/update-config.js mt /workspace/mailbox/mt &&
         echo '=== Configuring HEX git remote ===' &&
         (cd /workspace/mailbox/hex && git remote add mt 'file:///workspace/mailbox/mt/.git' || true) &&
         echo '=== Starting HEX OpenClaw gateway ===' &&

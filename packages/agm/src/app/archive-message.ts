@@ -1,6 +1,6 @@
 import { resolve } from 'path';
 import { GitRepo } from '../git/repo.js';
-import { loadConfig, getAgentRepoPath } from '../config/index.js';
+import { loadConfig, getAgentRepoPath, unknownAgentError } from '../config/index.js';
 import { ensureGitIdentity, ensureMaildirs } from '../git/preflight.js';
 
 export interface ArchiveOptions {
@@ -13,7 +13,7 @@ export async function archiveMessage(opts: ArchiveOptions): Promise<void> {
   const config = loadConfig(opts.configPath);
 
   const repoPath = getAgentRepoPath(config, opts.agent);
-  if (!repoPath) throw new Error(`Unknown agent: ${opts.agent}`);
+  if (!repoPath) unknownAgentError(opts.agent, config);
 
   await ensureMaildirs(repoPath);
   await ensureGitIdentity(repoPath);
