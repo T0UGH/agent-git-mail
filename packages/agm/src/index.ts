@@ -1,5 +1,7 @@
 #!/usr/bin/env node
 
+import { realpathSync } from 'fs';
+import { fileURLToPath } from 'url';
 import { cmdConfigShow, cmdConfigGet } from './cli/commands/config.js';
 import { cmdSend } from './cli/commands/send.js';
 import { cmdReply } from './cli/commands/reply.js';
@@ -166,6 +168,10 @@ Examples:
 `);
 }
 
-if (import.meta.url === new URL(process.argv[1], 'file:').href) {
+// On macOS (and Linux with symlinked paths), import.meta.url resolves to the real
+// path but process.argv[1] uses the symlink path as invoked. Normalize both.
+const selfPath = process.argv[1] ? realpathSync(process.argv[1]) : import.meta.filename;
+const importPath = fileURLToPath(import.meta.url);
+if (selfPath === importPath) {
   main();
 }
