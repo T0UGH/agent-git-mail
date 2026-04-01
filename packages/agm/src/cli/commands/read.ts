@@ -1,12 +1,12 @@
 import { readMessage } from '../../app/read-message.js';
 import { serializeFrontmatter } from '../../domain/frontmatter.js';
 
-export async function cmdRead(argv: { filename: string; agent: string; dir?: string }): Promise<void> {
+export async function cmdRead(argv: { filename: string; agent: string; dir?: string; configPath?: string }): Promise<void> {
   const result = await readMessage({
-    filename: argv.filename,
-    agent: argv.agent,
+    filename: argv.filename as string,
+    agent: argv.agent as string,
     dir: argv.dir as 'inbox' | 'outbox' | 'archive' | undefined,
-    configPath: undefined,
+    configPath: argv.configPath as string | undefined,
   });
   console.log(serializeFrontmatter(result.frontmatter));
   console.log('\n---\n');

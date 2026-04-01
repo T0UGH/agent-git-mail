@@ -1,11 +1,11 @@
 import { listMessages } from '../../app/list-messages.js';
 
-export async function cmdList(argv: { agent: string; dir?: string; format?: string }): Promise<void> {
+export async function cmdList(argv: { agent: string; dir?: string; format?: string; configPath?: string }): Promise<void> {
   const entries = await listMessages({
-    agent: argv.agent,
+    agent: argv.agent as string,
     dir: argv.dir as 'inbox' | 'outbox' | 'archive' | undefined,
     format: argv.format as 'table' | 'json' | undefined,
-    configPath: undefined,
+    configPath: argv.configPath as string | undefined,
   });
 
   if (argv.format === 'json') {
