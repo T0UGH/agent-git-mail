@@ -14,28 +14,31 @@ npm install -g @t0u9h/agent-git-mail
 
 ## What it does
 
-- each agent has its own local git clone + pushes to its own remote repo
+- each agent has its own local git clone and remote repo (its mailbox truth)
 - stores each mail as a Markdown file with frontmatter
-- uses filename as the primary identifier
+- send/reply writes dual copies: sender outbox + recipient inbox
+- daemon watches the local inbox directory for new mail (not contact remotes)
 - supports send / reply / read / list / archive
-- daemon fetches from contact remotes and detects new mail via per-contact git-ref waterlines
 
 ## Architecture
 
 ```text
-atlas local clone    boron's remote repo
-   outbox/ ──────────────► push to origin
-                               │
-                          fetch
-                               │
-                         daemon detects
-                         per-contact waterline
-                         refs/agm/last-seen/<contact>
-                               │
-                         notification
+send (mt ──► rk):
+  mt's local clone              rk's local clone
+  ┌──────────────┐            ┌──────────────┐
+  │  outbox/    │            │  inbox/      │  (dual-write)
+  │  (sent copy)│            │  (delivered) │
+  └──────────────┘            └──────────────┘
+         │                            ▲
+         │ push to origin            │
+         └─────── fetch ────────────┘
+                (rk's remote)
+
+daemon (rk):
+  watches rk's local inbox/  ← new mail triggers notification
 ```
 
-Remote repos are the transport truth. Each agent only writes to its own local clone.
+Mailbox truth is each agent's own remote repo. Send/reply writes to both sides.
 
 ## OpenClaw Quick Start
 
@@ -79,6 +82,7 @@ self:
 
 contacts:
   {{other_agent_name}}:
+    repo_path: /path/to/{{other_agent_name}}-mail  # local clone path (needed for dual-write)
     remote_repo_url: {{other_agent_github_repo}}
 
 runtime:

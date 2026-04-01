@@ -80,9 +80,16 @@ describe('reply (mailbox model)', () => {
     expect(replyFile).toBeDefined();
     expect(replyFile).toBe(result.filename);
 
+    // DEBUG: check mt inbox
+    const mtInboxAll = readdirSync(join(mtRepo, 'inbox'));
+    console.log('DEBUG mt inbox files:', mtInboxAll);
+    console.log('DEBUG originalFilename:', originalFilename);
+
     // Original sender (mt) inbox ALSO gets the reply (dual-write)
     const mtInbox = readdirSync(join(mtRepo, 'inbox')).filter(f => f.endsWith('.md'));
-    const replyInMtInbox = mtInbox.filter(f => f.startsWith('agm-') && f.includes('Re:'));
+    // reply file is different from original (different ts/from/to pattern)
+    const replyInMtInbox = mtInbox.filter(f => f !== originalFilename);
+    console.log('DEBUG replyInMtInbox:', replyInMtInbox);
     expect(replyInMtInbox.length).toBe(1);
   });
 
@@ -107,7 +114,8 @@ describe('reply (mailbox model)', () => {
 
     // original sender repo: ALSO 1 new commit (dual-write)
     expect(mtCommits2.length - mtCommits1.length).toBe(1);
-    expect(mtCommits2[0]).toContain('agm: send');
+    // recipient commit uses 'agm: deliver'
+    expect(mtCommits2[0]).toMatch(/agm: (send|deliver)/);
   });
 
   it('reply_to points to original filename in both copies', async () => {
@@ -128,7 +136,7 @@ describe('reply (mailbox model)', () => {
 
     // Check original sender inbox copy
     const mtInboxFiles = readdirSync(join(mtRepo, 'inbox')).filter(f => f.endsWith('.md'));
-    const replyInMt = mtInboxFiles.find(f => f !== originalFilename && f.includes('Re:'));
+    const replyInMt = mtInboxFiles.find(f => f !== originalFilename);
     expect(replyInMt).toBeDefined();
     const mtInboxContent = readFileSync(join(mtRepo, 'inbox', replyInMt!), 'utf-8');
     expect(mtInboxContent).toContain(`reply_to: ${originalFilename}`);

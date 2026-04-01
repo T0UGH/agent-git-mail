@@ -4,8 +4,7 @@ import { parseFrontmatter } from '../domain/frontmatter.js';
 import { readFileSync } from 'fs';
 import { resolve } from 'path';
 import type { Config } from '../config/schema.js';
-import { getAgentEntries, isConfigV2 } from '../config/index.js';
-import { discoverNewMail, type DiscoveredMail } from './remote-mail-discovery.js';
+import { getAgentEntries, getSelfId, getSelfLocalRepoPath } from '../config/index.js';
 
 export interface DaemonOptions {
   config: Config;
@@ -18,19 +17,7 @@ export async function runDaemon(opts: DaemonOptions): Promise<void> {
 
   if (opts.onNewMail) {
     // One-shot poll for testing
-    if (isConfigV2(opts.config)) {
-      const mail = await discoverNewMail({ config: opts.config });
-      for (const m of mail) {
-        await opts.onNewMail({ agent: opts.agentName ?? m.contact, filename: m.filename, from: m.from });
-      }
-    } else {
-      // Legacy v0/v1: use old local-watching approach
-      const allEntries = getAgentEntries(opts.config);
-      const entries: Array<[string, { repo_path: string }]> = opts.agentName
-        ? allEntries.filter(([name]) => name === opts.agentName).map(([name, repoPath]) => [name, { repo_path: repoPath }])
-        : allEntries.map(([name, repoPath]) => [name, { repo_path: repoPath }]);
-      await runPollLegacy(entries, opts.onNewMail);
-    }
+    await runPoll(opts);
     return;
   }
 
@@ -38,11 +25,7 @@ export async function runDaemon(opts: DaemonOptions): Promise<void> {
   while (true) {
     const start = Date.now();
     try {
-      if (isConfigV2(opts.config)) {
-        await runDaemonV2(opts);
-      } else {
-        await runDaemonLegacy(opts);
-      }
+      await runPoll(opts);
     } catch (e) {
       console.error('[daemon] poll error:', e);
     }
@@ -52,27 +35,25 @@ export async function runDaemon(opts: DaemonOptions): Promise<void> {
   }
 }
 
-async function runDaemonV2(opts: DaemonOptions): Promise<void> {
-  // Discover new mail from all contact remotes
-  const mail = await discoverNewMail({ config: opts.config });
-  if (mail.length === 0) return;
-
-  for (const m of mail) {
-    console.log(`[daemon] new mail from remote: from=${m.from} file=${m.filename} contact=${m.contact}`);
-    if (opts.onNewMail) {
-      await opts.onNewMail({ agent: opts.agentName ?? m.contact, filename: m.filename, from: m.from });
-    }
+/**
+ * Poll for new mail in self inbox only (mailbox model).
+ * Daemon watches the local self repo's inbox directory - not contact remotes.
+ * For v0 legacy (no self), falls back to agentName lookup via getAgentEntries.
+ */
+async function runPoll(opts: DaemonOptions): Promise<void> {
+  const selfId = opts.agentName ?? getSelfId(opts.config) ?? 'self';
+  let selfRepoPath = getSelfLocalRepoPath(opts.config);
+  // v0 legacy: no self field, look up via agentName + getAgentEntries
+  if (!selfRepoPath) {
+    const entries = getAgentEntries(opts.config);
+    const entry = entries.find(([name]) => name === selfId);
+    selfRepoPath = entry?.[1] ?? null;
   }
-}
-
-async function runDaemonLegacy(opts: DaemonOptions): Promise<void> {
-  const allEntries = getAgentEntries(opts.config);
-  const entries: Array<[string, { repo_path: string }]> = opts.agentName
-    ? allEntries.filter(([name]) => name === opts.agentName).map(([name, repoPath]) => [name, { repo_path: repoPath }])
-    : allEntries.map(([name, repoPath]) => [name, { repo_path: repoPath }]);
-  for (const [name, agent] of entries) {
-    await watchAgent(name, agent, opts.onNewMail);
+  if (!selfRepoPath) {
+    console.warn('[daemon] no self local_repo_path configured, skipping');
+    return;
   }
+  await watchAgent(selfId, { repo_path: selfRepoPath }, opts.onNewMail);
 }
 
 async function watchAgent(
@@ -118,15 +99,6 @@ async function watchAgent(
   }
 
   await waterline.write(currentSha);
-}
-
-async function runPollLegacy(
-  agents: [string, { repo_path: string }][],
-  onNewMail: (mail: { agent: string; filename: string; from: string }) => Promise<void>,
-): Promise<void> {
-  for (const [name, agent] of agents) {
-    await watchAgent(name, agent, onNewMail);
-  }
 }
 
 function parseDiff(diffOutput: string): string[] {

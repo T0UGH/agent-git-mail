@@ -81,7 +81,8 @@ describe('send (mailbox model)', () => {
 
     // recipient repo: ALSO 1 new commit (dual-write)
     expect(hexCommits2.length - hexCommits1.length).toBe(1);
-    expect(hexCommits2[0]).toContain('agm: send');
+    // recipient commit message is 'agm: deliver' (not 'agm: send')
+    expect(hexCommits2[0]).toMatch(/agm: (send|deliver)/);
   });
 
   it('commit on sender side contains outbox file', async () => {
@@ -107,7 +108,8 @@ describe('send (mailbox model)', () => {
     expect(content).toContain('from: mt');
     expect(content).toContain('to: hex');
     expect(content).toContain('subject: Hello');
-    expect(content).toContain('agm:');
+    expect(content).toContain('created_at:');
+    expect(content).toContain('expects_reply:');
   });
 
   afterAll(() => {

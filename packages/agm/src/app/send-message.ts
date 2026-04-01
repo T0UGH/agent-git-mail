@@ -19,9 +19,9 @@ export interface SendOptions {
 }
 
 /**
- * Send a message. Remote-only transport: only writes to sender's own outbox and pushes
- * to sender's origin remote. The recipient's daemon detects the message by fetching
- * the sender's remote (sender's outbox commit) and diffing against per-contact waterline.
+ * Send a message. Mailbox model: writes to sender's outbox AND recipient's inbox.
+ * Both sides commit their copy. Sender pushes their origin; recipient repo is pushed
+ * by the recipient's own agent (or in test environments, local paths allow direct push).
  */
 export async function sendMessage(opts: SendOptions): Promise<{ filename: string }> {
   const config = loadConfig(opts.configPath);
@@ -29,12 +29,20 @@ export async function sendMessage(opts: SendOptions): Promise<{ filename: string
   const senderRepoPath = getAgentRepoPath(config, opts.from);
   if (!senderRepoPath) unknownAgentError(opts.from, config);
 
+  const recipientRepoPath = getAgentRepoPath(config, opts.to);
+  if (!recipientRepoPath) unknownAgentError(opts.to, config);
+
   // Verify recipient is known
-  // v2: contacts have remote URLs (no local paths), use getContactRemoteRepoUrl
+  // v2: contacts have remote URLs; recipient must also have local path for dual-write
   // legacy v0/v1: use getAgentRepoPath which works for agents map
   if (isConfigV2(config)) {
     if (!getContactRemoteRepoUrl(config, opts.to)) {
       unknownAgentError(opts.to, config);
+    }
+    // For v2 dual-write, recipient must have a local repo path configured
+    if (!recipientRepoPath) {
+      throw new Error(`Recipient ${opts.to} has no local repo path. ` +
+        `Add "repo_path" to contacts.${opts.to} in config for dual-write delivery.`);
     }
   } else {
     if (!getAgentRepoPath(config, opts.to)) {
@@ -61,19 +69,27 @@ export async function sendMessage(opts: SendOptions): Promise<{ filename: string
     expects_reply: opts.expectsReply ?? false,
   };
 
-  // Ensure sender's outbox exists and sender has git identity set
+  const content = serializeFrontmatter(frontmatter) + '\n\n' + body;
+
+  // --- Sender side: write to outbox ---
   await ensureMaildirs(senderRepoPath);
   await ensureGitIdentity(senderRepoPath);
-
   const senderRepo = new GitRepo(senderRepoPath);
-
-  // Write to sender outbox (only place we write in remote-only model)
-  const senderContent = serializeFrontmatter(frontmatter) + '\n\n' + body;
   const outboxPath = resolve(senderRepoPath, 'outbox', filename);
-  await writeFileAtomic(outboxPath, senderContent);
+  await writeFileAtomic(outboxPath, content);
   await senderRepo.add(`outbox/${filename}`);
   await senderRepo.commit(`agm: send ${filename}`, `outbox/${filename}`);
   await maybePush(senderRepo);
+
+  // --- Recipient side: write to inbox ---
+  await ensureMaildirs(recipientRepoPath);
+  await ensureGitIdentity(recipientRepoPath);
+  const recipientRepo = new GitRepo(recipientRepoPath);
+  const inboxPath = resolve(recipientRepoPath, 'inbox', filename);
+  await writeFileAtomic(inboxPath, content);
+  await recipientRepo.add(`inbox/${filename}`);
+  await recipientRepo.commit(`agm: deliver ${filename}`, `inbox/${filename}`);
+  await maybePush(recipientRepo);
 
   return { filename };
 }

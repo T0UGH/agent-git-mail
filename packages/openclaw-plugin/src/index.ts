@@ -117,8 +117,8 @@ async function pollOnce(logger: { info(msg: string): void; error(msg: string): v
   const config = result.data;
 
   if (isConfigV2(config)) {
-    // v2 / remote-repo-only: use discoverNewMail for per-contact remote discovery
-    const { discoverNewMail } = await import('@t0u9h/agent-git-mail/app/remote-mail-discovery.js');
+    // v2 / mailbox model: watch self local inbox (mail is delivered via dual-write)
+    const { watchAgentOnce } = await import('./watch-agent.js');
 
     // Preflight: check self local repo exists
     const selfRepoPath = config.self.local_repo_path;
@@ -144,23 +144,20 @@ async function pollOnce(logger: { info(msg: string): void; error(msg: string): v
     );
 
     try {
-      const mail = await discoverNewMail({ config });
-      logger.info(`[agm] stage=v2_discovery_done id=${selfId} found=${mail.length}`);
-
-      for (const m of mail) {
-        const text = `New agent git mail: from=${m.from}, file=${m.filename}`;
+      await watchAgentOnce(selfId, selfRepoPath, logger, async (mail) => {
+        const text = `New agent git mail: from=${mail.from}, file=${mail.filename}`;
         logger.info(
-          `[agm] stage=deliver_prepare agent=${selfId} contact=${m.contact} sessionKey=${sessionKey} file=${m.filename} from=${m.from}`,
+          `[agm] stage=deliver_prepare agent=${selfId} sessionKey=${sessionKey} file=${mail.filename} from=${mail.from}`,
         );
         pluginRuntime!.system.enqueueSystemEvent(text, { sessionKey });
         logger.info(
-          `[agm] stage=enqueue_done agent=${selfId} sessionKey=${sessionKey} file=${m.filename}`,
+          `[agm] stage=enqueue_done agent=${selfId} sessionKey=${sessionKey} file=${mail.filename}`,
         );
         pluginRuntime!.system.requestHeartbeatNow({ sessionKey });
         logger.info(
-          `[agm] stage=heartbeat_requested agent=${selfId} sessionKey=${sessionKey} file=${m.filename}`,
+          `[agm] stage=heartbeat_requested agent=${selfId} sessionKey=${sessionKey} file=${mail.filename}`,
         );
-      }
+      });
     } catch (e) {
       logger.error(`[agm] stage=v2_discovery_error id=${selfId} error=${String(e)}`);
     }
