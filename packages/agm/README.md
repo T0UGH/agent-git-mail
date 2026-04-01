@@ -22,7 +22,7 @@ npm install -g @t0u9h/agent-git-mail
 
 ## Architecture
 
-```
+```text
 atlas local clone    boron's remote repo
    outbox/ ──────────────► push to origin
                                │
@@ -37,29 +37,93 @@ atlas local clone    boron's remote repo
 
 Remote repos are the transport truth. Each agent only writes to its own local clone.
 
-## Bootstrap
+## OpenClaw Quick Start
+
+### 1. Install AGM CLI
 
 ```bash
-agm bootstrap \
-  --self-id atlas \
-  --self-remote-repo-url https://github.com/T0UGH/test-mailbox-a.git \
-  --self-local-repo-path /path/to/atlas-mailbox
+npm install -g @t0u9h/agent-git-mail
 ```
 
-This clones the remote repo to the local path and creates a v2 config at `~/.config/agm/config.yaml`. Add contacts by editing the config:
+### 2. Bootstrap your agent
+
+Use the one-shot bootstrap script from this repo:
+
+```bash
+AGM_SELF_ID=atlas \
+AGM_SELF_REMOTE_REPO_URL=https://github.com/USER/atlas-mailbox.git \
+AGM_SELF_LOCAL_REPO_PATH=/path/to/atlas-mailbox \
+./scripts/bootstrap.sh
+```
+
+What this does:
+
+- checks `git` / `node` / `npm` / `openclaw`
+- installs `@t0u9h/agent-git-mail`
+- runs `agm bootstrap`
+- clones your remote mailbox repo to your local path
+- installs `@t0u9h/openclaw-agent-git-mail` unless you set `AGM_SKIP_PLUGIN_INSTALL=1`
+
+Optional environment variables:
+
+- `AGM_CONFIG_PATH=/custom/path/config.yaml`
+- `AGM_SKIP_PLUGIN_INSTALL=1`
+
+### 3. Add contacts
+
+After bootstrap, edit your config:
 
 ```yaml
 self:
   id: atlas
   local_repo_path: /path/to/atlas-mailbox
-  remote_repo_url: https://github.com/T0UGH/test-mailbox-a.git
+  remote_repo_url: https://github.com/USER/atlas-mailbox.git
 
 contacts:
   boron:
-    remote_repo_url: https://github.com/T0UGH/test-mailbox-b.git
+    remote_repo_url: https://github.com/USER/boron-mailbox.git
 
 runtime:
   poll_interval_seconds: 30
+```
+
+Default config path:
+
+```text
+~/.config/agm/config.yaml
+```
+
+### 4. Restart OpenClaw gateway
+
+The plugin is loaded by OpenClaw gateway, so restart it after bootstrap:
+
+```bash
+openclaw gateway restart
+```
+
+### 5. Verify
+
+Check the generated config:
+
+```bash
+agm config show
+```
+
+Then send a test mail from another agent and confirm:
+
+- the recipient agent detects the new mail
+- the OpenClaw plugin injects a notification into the main session
+- the main session wakes and can act on the mail
+
+## Manual bootstrap
+
+If you do not want to use the helper script, run `agm bootstrap` directly:
+
+```bash
+agm bootstrap \
+  --self-id atlas \
+  --self-remote-repo-url https://github.com/USER/atlas-mailbox.git \
+  --self-local-repo-path /path/to/atlas-mailbox
 ```
 
 ## Basic usage
@@ -70,7 +134,7 @@ Send a mail:
 agm send --from atlas --to boron --subject "Hello" --body-file ./body.md
 ```
 
-The daemon detects the new message by fetching boron's remote and diffing against the per-contact waterline.
+The daemon detects the new message by fetching the sender remote and diffing against the per-contact waterline.
 
 List your outbox:
 
@@ -78,13 +142,11 @@ List your outbox:
 agm list --agent atlas --dir outbox
 ```
 
-List your local inbox (materialized by daemon):
+List your local inbox (if your runtime materializes it):
 
 ```bash
 agm list --agent atlas --dir inbox
 ```
-
-Note: inbox only shows messages the daemon has fetched from contact remotes. The outbox shows sent messages.
 
 Reply by filename:
 
@@ -101,7 +163,7 @@ agm archive 2026-03-29T10-21-00-boron-to-atlas.md --agent atlas
 ## Notes
 
 - This package is the CLI/body of the system.
-- For OpenClaw integration, install the companion plugin package:
+- For OpenClaw integration, the companion plugin package is:
 
 ```bash
 openclaw plugins install @t0u9h/openclaw-agent-git-mail
