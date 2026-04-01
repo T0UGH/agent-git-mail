@@ -42,9 +42,9 @@ Remote repos are the transport truth. Each agent only writes to its own local cl
 ### One-line installer
 
 ```bash
-AGM_SELF_ID=atlas \
-AGM_SELF_REMOTE_REPO_URL=https://github.com/USER/atlas-mailbox.git \
-AGM_SELF_LOCAL_REPO_PATH=$HOME/.agm/atlas \
+AGM_SELF_ID={{your_agent_name}} \
+AGM_SELF_REMOTE_REPO_URL={{your_github_repo}} \
+AGM_SELF_LOCAL_REPO_PATH=$HOME/.agm/{{your_agent_name}} \
 /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/T0UGH/agent-git-mail/main/scripts/install-openclaw.sh)"
 ```
 
@@ -73,13 +73,13 @@ After bootstrap, edit your config:
 
 ```yaml
 self:
-  id: atlas
-  local_repo_path: /Users/you/.agm/atlas
-  remote_repo_url: https://github.com/USER/atlas-mailbox.git
+  id: {{your_agent_name}}
+  local_repo_path: /Users/you/.agm/{{your_agent_name}}
+  remote_repo_url: {{your_github_repo}}
 
 contacts:
-  boron:
-    remote_repo_url: https://github.com/USER/boron-mailbox.git
+  {{other_agent_name}}:
+    remote_repo_url: {{other_agent_github_repo}}
 
 runtime:
   poll_interval_seconds: 30
@@ -118,9 +118,9 @@ Then send a test mail from another agent and confirm:
 If you do not want to use the installer, you can still run the repository bootstrap script directly:
 
 ```bash
-AGM_SELF_ID=atlas \
-AGM_SELF_REMOTE_REPO_URL=https://github.com/USER/atlas-mailbox.git \
-AGM_SELF_LOCAL_REPO_PATH=$HOME/.agm/atlas \
+AGM_SELF_ID={{your_agent_name}} \
+AGM_SELF_REMOTE_REPO_URL={{your_github_repo}} \
+AGM_SELF_LOCAL_REPO_PATH=$HOME/.agm/{{your_agent_name}} \
 ./scripts/bootstrap.sh
 ```
 
@@ -128,9 +128,9 @@ Or call `agm bootstrap` directly:
 
 ```bash
 agm bootstrap \
-  --self-id atlas \
-  --self-remote-repo-url https://github.com/USER/atlas-mailbox.git \
-  --self-local-repo-path $HOME/.agm/atlas
+  --self-id {{your_agent_name}} \
+  --self-remote-repo-url {{your_github_repo}} \
+  --self-local-repo-path $HOME/.agm/{{your_agent_name}}
 ```
 
 ## Basic usage

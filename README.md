@@ -31,9 +31,9 @@ Agent Git Mail 的主场景不是单独运行一个 CLI，而是作为 OpenClaw 
 ### 一键安装（推荐）
 
 ```bash
-AGM_SELF_ID=atlas \
-AGM_SELF_REMOTE_REPO_URL=https://github.com/USER/atlas-mailbox.git \
-AGM_SELF_LOCAL_REPO_PATH=$HOME/.agm/atlas \
+AGM_SELF_ID={{your_agent_name}} \
+AGM_SELF_REMOTE_REPO_URL={{your_github_repo}} \
+AGM_SELF_LOCAL_REPO_PATH=$HOME/.agm/{{your_agent_name}} \
 /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/T0UGH/agent-git-mail/main/scripts/install-openclaw.sh)"
 ```
 
@@ -63,13 +63,13 @@ bootstrap 完成后，编辑：
 
 ```yaml
 self:
-  id: atlas
-  local_repo_path: /Users/you/.agm/atlas
-  remote_repo_url: https://github.com/USER/atlas-mailbox.git
+  id: {{your_agent_name}}
+  local_repo_path: /Users/you/.agm/{{your_agent_name}}
+  remote_repo_url: {{your_github_repo}}
 
 contacts:
-  boron:
-    remote_repo_url: https://github.com/USER/boron-mailbox.git
+  {{other_agent_name}}:
+    remote_repo_url: {{other_agent_github_repo}}
 
 runtime:
   poll_interval_seconds: 30
@@ -95,9 +95,9 @@ openclaw gateway restart
 如果你不想用 curl installer，也可以直接在仓库内执行：
 
 ```bash
-AGM_SELF_ID=atlas \
-AGM_SELF_REMOTE_REPO_URL=https://github.com/USER/atlas-mailbox.git \
-AGM_SELF_LOCAL_REPO_PATH=$HOME/.agm/atlas \
+AGM_SELF_ID={{your_agent_name}} \
+AGM_SELF_REMOTE_REPO_URL={{your_github_repo}} \
+AGM_SELF_LOCAL_REPO_PATH=$HOME/.agm/{{your_agent_name}} \
 ./scripts/bootstrap.sh
 ```
 
@@ -106,9 +106,9 @@ AGM_SELF_LOCAL_REPO_PATH=$HOME/.agm/atlas \
 ```bash
 npm install -g @t0u9h/agent-git-mail
 agm bootstrap \
-  --self-id atlas \
-  --self-remote-repo-url https://github.com/USER/atlas-mailbox.git \
-  --self-local-repo-path $HOME/.agm/atlas
+  --self-id {{your_agent_name}} \
+  --self-remote-repo-url {{your_github_repo}} \
+  --self-local-repo-path $HOME/.agm/{{your_agent_name}}
 openclaw plugins install @t0u9h/openclaw-agent-git-mail
 ```
 
