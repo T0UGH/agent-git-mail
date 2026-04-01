@@ -33,22 +33,33 @@ const plugin = {
     // Register session binding hooks
     api.on('session_start', (event) => {
       if (!event.sessionKey) return;
-      const parts = event.sessionKey.split(':');
-      const agentId = parts[1] ?? '';
-      if (agentId && sessionBindings.canBind(event.sessionKey)) {
-        sessionBindings.bind(event.sessionKey, agentId);
-        api.logger.info(`[agm] bound session ${event.sessionKey} to agent ${agentId}`);
-      }
+      if (!sessionBindings.canBind(event.sessionKey)) return;
+
+      import('@t0u9h/agent-git-mail/config').then(({ loadConfigSafe, getSelfId }) => {
+        const result = loadConfigSafe();
+        if (!result.ok) return;
+        const selfId = getSelfId(result.data);
+        if (!selfId) return;
+        sessionBindings.bind(event.sessionKey, selfId);
+        api.logger.info(`[agm] bound session ${event.sessionKey} to agent ${selfId}`);
+      }).catch(() => {
+        // ignore config load errors in hook path
+      });
     });
 
     api.on('session_end', (event) => {
       if (!event.sessionKey) return;
-      const parts = event.sessionKey.split(':');
-      const agentId = parts[1] ?? '';
-      if (agentId) {
-        sessionBindings.unbind(agentId);
-        api.logger.info(`[agm] unbound session for agent ${agentId}`);
-      }
+
+      import('@t0u9h/agent-git-mail/config').then(({ loadConfigSafe, getSelfId }) => {
+        const result = loadConfigSafe();
+        if (!result.ok) return;
+        const selfId = getSelfId(result.data);
+        if (!selfId) return;
+        sessionBindings.unbind(selfId, event.sessionKey);
+        api.logger.info(`[agm] unbound session ${event.sessionKey} for agent ${selfId}`);
+      }).catch(() => {
+        // ignore config load errors in hook path
+      });
     });
 
     // Register the daemon service

@@ -14,17 +14,28 @@ export class SessionBindingStore {
   private bindings = new Map<string, SessionBinding>();
 
   /**
-   * Only allow "main" or "direct" kind sessions to be registered.
-   * This prevents subagent/cron/thread sessions from capturing mailbox notifications.
+   * Only allow main/direct sessions to be registered.
+   * We prefer Feishu direct sessions over generic main sessions.
    */
   canBind(sessionKey: string): boolean {
-    // Conservative: only bind sessions that look like direct/main sessions
-    // Pattern: agent:main:feishu:direct:* or agent:main:*:direct:*
     const lower = sessionKey.toLowerCase();
-    return lower.includes(':direct:') || lower.includes(':main:');
+    return lower.includes(':direct:') || lower === 'agent:main:main';
+  }
+
+  private isFeishuDirect(sessionKey: string): boolean {
+    return sessionKey.toLowerCase().includes(':feishu:direct:');
   }
 
   bind(sessionKey: string, agentId: string): void {
+    const existing = this.bindings.get(agentId);
+    if (existing) {
+      const existingIsFeishu = this.isFeishuDirect(existing.sessionKey);
+      const incomingIsFeishu = this.isFeishuDirect(sessionKey);
+      if (existingIsFeishu && !incomingIsFeishu) {
+        return;
+      }
+    }
+
     this.bindings.set(agentId, {
       sessionKey,
       agentId,
@@ -32,7 +43,14 @@ export class SessionBindingStore {
     });
   }
 
-  unbind(agentId: string): void {
+  unbind(agentId: string, sessionKey?: string): void {
+    if (!sessionKey) {
+      this.bindings.delete(agentId);
+      return;
+    }
+    const existing = this.bindings.get(agentId);
+    if (!existing) return;
+    if (existing.sessionKey !== sessionKey) return;
     this.bindings.delete(agentId);
   }
 
