@@ -1,6 +1,6 @@
 {
   "name": "@t0u9h/openclaw-agent-git-mail",
-  "version": "0.1.4",
+  "version": "0.1.5",
   "private": false,
   "type": "module",
   "main": "./dist/index.js",
@@ -42,7 +42,7 @@
     "test": "vitest run"
   },
   "dependencies": {
-    "@t0u9h/agent-git-mail": "^0.1.4"
+    "@t0u9h/agent-git-mail": "^0.1.6"
   },
   "devDependencies": {
     "@types/node": "^22.0.0",
