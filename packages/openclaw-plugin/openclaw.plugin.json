@@ -2,7 +2,6 @@
   "id": "openclaw-agent-git-mail",
   "name": "Agent Git Mail",
   "description": "OpenClaw plugin for Agent Git Mail.",
-  "entry": "./dist/index.js",
   "configSchema": {
     "type": "object",
     "additionalProperties": false,

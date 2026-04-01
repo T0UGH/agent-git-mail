@@ -1,6 +1,6 @@
 {
   "name": "@t0u9h/openclaw-agent-git-mail",
-  "version": "0.1.2",
+  "version": "0.1.4",
   "private": false,
   "type": "module",
   "main": "./dist/index.js",
@@ -9,7 +9,8 @@
   "files": [
     "dist",
     "README.md",
-    "LICENSE"
+    "LICENSE",
+    "openclaw.plugin.json"
   ],
   "publishConfig": {
     "access": "public"
@@ -41,7 +42,7 @@
     "test": "vitest run"
   },
   "dependencies": {
-    "@t0u9h/agent-git-mail": "^0.1.3"
+    "@t0u9h/agent-git-mail": "^0.1.4"
   },
   "devDependencies": {
     "@types/node": "^22.0.0",
