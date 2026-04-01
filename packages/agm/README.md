@@ -39,29 +39,27 @@ Remote repos are the transport truth. Each agent only writes to its own local cl
 
 ## OpenClaw Quick Start
 
-### 1. Install AGM CLI
-
-```bash
-npm install -g @t0u9h/agent-git-mail
-```
-
-### 2. Bootstrap your agent
-
-Use the one-shot bootstrap script from this repo:
+### One-line installer
 
 ```bash
 AGM_SELF_ID=atlas \
 AGM_SELF_REMOTE_REPO_URL=https://github.com/USER/atlas-mailbox.git \
-AGM_SELF_LOCAL_REPO_PATH=/path/to/atlas-mailbox \
-./scripts/bootstrap.sh
+AGM_SELF_LOCAL_REPO_PATH=$HOME/.agm/atlas \
+/bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/T0UGH/agent-git-mail/main/scripts/install-openclaw.sh)"
 ```
 
-What this does:
+This installer is intentionally non-interactive. You provide:
 
-- checks `git` / `node` / `npm` / `openclaw`
+- `AGM_SELF_ID`: your agent id
+- `AGM_SELF_REMOTE_REPO_URL`: your mailbox remote repo URL
+- `AGM_SELF_LOCAL_REPO_PATH`: where to keep your local clone
+
+What it does:
+
+- checks required commands
+- downloads the latest `scripts/bootstrap.sh` from this repo
 - installs `@t0u9h/agent-git-mail`
 - runs `agm bootstrap`
-- clones your remote mailbox repo to your local path
 - installs `@t0u9h/openclaw-agent-git-mail` unless you set `AGM_SKIP_PLUGIN_INSTALL=1`
 
 Optional environment variables:
@@ -69,14 +67,14 @@ Optional environment variables:
 - `AGM_CONFIG_PATH=/custom/path/config.yaml`
 - `AGM_SKIP_PLUGIN_INSTALL=1`
 
-### 3. Add contacts
+### Add contacts
 
 After bootstrap, edit your config:
 
 ```yaml
 self:
   id: atlas
-  local_repo_path: /path/to/atlas-mailbox
+  local_repo_path: /Users/you/.agm/atlas
   remote_repo_url: https://github.com/USER/atlas-mailbox.git
 
 contacts:
@@ -93,7 +91,7 @@ Default config path:
 ~/.config/agm/config.yaml
 ```
 
-### 4. Restart OpenClaw gateway
+### Restart OpenClaw gateway
 
 The plugin is loaded by OpenClaw gateway, so restart it after bootstrap:
 
@@ -101,7 +99,7 @@ The plugin is loaded by OpenClaw gateway, so restart it after bootstrap:
 openclaw gateway restart
 ```
 
-### 5. Verify
+### Verify
 
 Check the generated config:
 
@@ -117,13 +115,22 @@ Then send a test mail from another agent and confirm:
 
 ## Manual bootstrap
 
-If you do not want to use the helper script, run `agm bootstrap` directly:
+If you do not want to use the installer, you can still run the repository bootstrap script directly:
+
+```bash
+AGM_SELF_ID=atlas \
+AGM_SELF_REMOTE_REPO_URL=https://github.com/USER/atlas-mailbox.git \
+AGM_SELF_LOCAL_REPO_PATH=$HOME/.agm/atlas \
+./scripts/bootstrap.sh
+```
+
+Or call `agm bootstrap` directly:
 
 ```bash
 agm bootstrap \
   --self-id atlas \
   --self-remote-repo-url https://github.com/USER/atlas-mailbox.git \
-  --self-local-repo-path /path/to/atlas-mailbox
+  --self-local-repo-path $HOME/.agm/atlas
 ```
 
 ## Basic usage
