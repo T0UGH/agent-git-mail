@@ -5,7 +5,7 @@ import { tmpdir } from 'os';
 import { join } from 'path';
 import { sendMessage } from '../src/app/send-message.js';
 
-// v1 format (legacy) for backward compat testing
+// v1 format (legacy) - contacts have local paths, supports dual-write
 function makeConfigLegacy(repo1: string, repo2: string, name1: string, name2: string): string {
   return `self:
   id: ${name1}
@@ -22,7 +22,7 @@ function initRepo(repoPath: string, email: string, name: string): void {
   );
 }
 
-describe('send (remote-only model)', () => {
+describe('send (mailbox model)', () => {
   const tmp = mkdtempSync(join(tmpdir(), 'agm-send-test-'));
   let mtRepo: string;
   let hexRepo: string;
@@ -43,8 +43,8 @@ describe('send (remote-only model)', () => {
     writeFileSync(configPath, makeConfigLegacy(mtRepo, hexRepo, 'mt', 'hex'), 'utf-8');
   });
 
-  it('writes only to sender outbox, not recipient inbox', async () => {
-    await sendMessage({
+  it('writes to sender outbox AND recipient inbox (dual-write)', async () => {
+    const result = await sendMessage({
       from: 'mt',
       to: 'hex',
       subject: 'Test subject',
@@ -57,40 +57,57 @@ describe('send (remote-only model)', () => {
     const outboxFiles = readdirSync(join(mtRepo, 'outbox')).filter(f => f.endsWith('.md'));
     expect(outboxFiles.length).toBe(1);
 
-    // Recipient inbox is NOT written by sender (remote-only model)
+    // Recipient inbox ALSO gets the message (dual-write mailbox semantics)
     const inboxFiles = readdirSync(join(hexRepo, 'inbox')).filter(f => f.endsWith('.md'));
-    expect(inboxFiles.length).toBe(0);
+    expect(inboxFiles.length).toBe(1);
+
+    // Same filename on both sides (one logical mail, two physical copies)
+    expect(outboxFiles[0]).toBe(result.filename);
+    expect(inboxFiles[0]).toBe(result.filename);
   });
 
-  it('creates exactly one new commit in sender repo', async () => {
-    const commits1 = execSync(`git -C "${mtRepo}" log --oneline`, { encoding: 'utf-8' }).trim().split('\n').filter(Boolean);
+  it('creates commits in BOTH sender and recipient repos', async () => {
+    const mtCommits1 = execSync(`git -C "${mtRepo}" log --oneline`, { encoding: 'utf-8' }).trim().split('\n').filter(Boolean);
+    const hexCommits1 = execSync(`git -C "${hexRepo}" log --oneline`, { encoding: 'utf-8' }).trim().split('\n').filter(Boolean);
 
     await sendMessage({ from: 'mt', to: 'hex', subject: 'Test', bodyFile, configPath });
 
-    const commits2 = execSync(`git -C "${mtRepo}" log --oneline`, { encoding: 'utf-8' }).trim().split('\n').filter(Boolean);
-    // sender repo: 1 new commit (agm: send ...)
-    expect(commits2.length - commits1.length).toBe(1);
-    expect(commits2[0]).toContain('agm: send');
+    const mtCommits2 = execSync(`git -C "${mtRepo}" log --oneline`, { encoding: 'utf-8' }).trim().split('\n').filter(Boolean);
+    const hexCommits2 = execSync(`git -C "${hexRepo}" log --oneline`, { encoding: 'utf-8' }).trim().split('\n').filter(Boolean);
 
-    // recipient repo: NO new commits (sender does not write to recipient)
-    const hexCommits = execSync(`git -C "${hexRepo}" log --oneline`, { encoding: 'utf-8' }).trim().split('\n').filter(Boolean);
-    expect(hexCommits.length).toBe(1); // only init commit
+    // sender repo: 1 new commit
+    expect(mtCommits2.length - mtCommits1.length).toBe(1);
+    expect(mtCommits2[0]).toContain('agm: send');
+
+    // recipient repo: ALSO 1 new commit (dual-write)
+    expect(hexCommits2.length - hexCommits1.length).toBe(1);
+    expect(hexCommits2[0]).toContain('agm: send');
   });
 
-  it('commit contains only outbox file', async () => {
+  it('commit on sender side contains outbox file', async () => {
     await sendMessage({ from: 'mt', to: 'hex', subject: 'Test', bodyFile, configPath });
 
     const diff = execSync(`git -C "${mtRepo}" diff HEAD~1 --name-only`, { encoding: 'utf-8' }).trim().split('\n').filter(Boolean);
-    expect(diff.length).toBe(1);
-    expect(diff[0]).toContain('outbox/');
+    expect(diff.some(d => d.includes('outbox/'))).toBe(true);
   });
 
-  it('pushed commit is on sender origin', async () => {
+  it('commit on recipient side contains inbox file', async () => {
     await sendMessage({ from: 'mt', to: 'hex', subject: 'Test', bodyFile, configPath });
 
-    // Verify sender has a commit with the message
-    const log = execSync(`git -C "${mtRepo}" log --oneline -1`, { encoding: 'utf-8' }).trim();
-    expect(log).toContain('agm: send');
+    const diff = execSync(`git -C "${hexRepo}" diff HEAD~1 --name-only`, { encoding: 'utf-8' }).trim().split('\n').filter(Boolean);
+    expect(diff.some(d => d.includes('inbox/'))).toBe(true);
+  });
+
+  it('recipient inbox file has correct frontmatter', async () => {
+    const result = await sendMessage({ from: 'mt', to: 'hex', subject: 'Hello', bodyFile, configPath });
+
+    const inboxPath = join(hexRepo, 'inbox', result.filename);
+    const content = readFileSync(inboxPath, 'utf-8');
+
+    expect(content).toContain('from: mt');
+    expect(content).toContain('to: hex');
+    expect(content).toContain('subject: Hello');
+    expect(content).toContain('agm:');
   });
 
   afterAll(() => {

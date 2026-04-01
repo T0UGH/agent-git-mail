@@ -17,6 +17,7 @@ export const RuntimeConfigSchema = z.object({
 });
 
 export const ContactConfigSchema = z.object({
+  repo_path: z.string().optional(),
   remote_repo_url: z.string().min(1),
 });
 
@@ -147,15 +148,27 @@ export function getContactNames(c: Config): string[] {
   return [];
 }
 
+/** Returns contact's local repo path (v2: from contacts[].repo_path; v1/legacy: from contacts map) */
+export function getContactRepoPath(c: Config, name: string): string | null {
+  if (isConfigV2(c)) {
+    return c.contacts[name]?.repo_path ?? null;
+  }
+  if (isConfigV1(c)) {
+    return (c as LegacyConfigV1).contacts[name] ?? null;
+  }
+  return null;
+}
+
 /**
  * Looks up local repo path by agent name.
- * v2: only self has a local path (contacts are remote-only)
+ * v2: self + contacts (contacts need repo_path in config)
  * v1/legacy: self and contacts all have local paths
  */
 export function getAgentRepoPath(c: Config, name: string): string | null {
   if (isConfigV2(c)) {
     if (c.self.id === name) return c.self.local_repo_path;
-    return null;
+    // v2 contacts may have explicit local paths
+    return c.contacts[name]?.repo_path ?? null;
   }
   if (isConfigV1(c)) {
     const v1 = c as LegacyConfigV1;

@@ -17,6 +17,7 @@ export {
   getSelfRemoteRepoUrl,
   getContactRemoteRepoUrl,
   getContactNames,
+  getContactRepoPath,
   getAgentRepoPath,
   getAgentEntries,
   unknownAgentError,
