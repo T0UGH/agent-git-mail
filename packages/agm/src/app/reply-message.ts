@@ -4,7 +4,7 @@ import { GitRepo } from '../git/repo.js';
 import { generateFilename, generateUniqueSuffix } from '../domain/filename.js';
 import { serializeFrontmatter, type MessageFrontmatter, parseFrontmatter } from '../domain/frontmatter.js';
 import { loadConfig } from '../config/load.js';
-import { getAgentRepoPath, unknownAgentError } from '../config/index.js';
+import { getAgentRepoPath, getContactRemoteRepoUrl, unknownAgentError, isConfigV2 } from '../config/index.js';
 import { maybePush } from './git-push.js';
 import { ensureGitIdentity, ensureMaildirs } from '../git/preflight.js';
 
@@ -16,17 +16,22 @@ export interface ReplyOptions {
   configPath?: string;
 }
 
+/**
+ * Reply to a message. Remote-only transport: only writes to replier's own outbox and pushes
+ * to replier's origin remote. The original sender's daemon detects the reply by fetching
+ * the replier's remote (replier's outbox commit).
+ */
 export async function replyMessage(opts: ReplyOptions): Promise<{ filename: string }> {
   const config = loadConfig(opts.configPath);
 
-  const fromRepo = getAgentRepoPath(config, opts.from);
-  if (!fromRepo) unknownAgentError(opts.from, config);
+  const replierRepoPath = getAgentRepoPath(config, opts.from);
+  if (!replierRepoPath) unknownAgentError(opts.from, config);
 
   const dir = opts.dir ?? 'inbox';
-  // Find the original message in sender's outbox or inbox
+  // Search for the original message in sender's outbox or inbox
   const searchDirs = dir === 'outbox'
-    ? [resolve(fromRepo, 'outbox')]
-    : [resolve(fromRepo, 'inbox'), resolve(fromRepo, 'outbox')];
+    ? [resolve(replierRepoPath, 'outbox')]
+    : [resolve(replierRepoPath, 'inbox'), resolve(replierRepoPath, 'outbox')];
 
   let originalPath: string | null = null;
   for (const d of searchDirs) {
@@ -50,8 +55,15 @@ export async function replyMessage(opts: ReplyOptions): Promise<{ filename: stri
   // recipient is whoever sent the original message
   const to = original.from;
 
-  const toRepo = getAgentRepoPath(config, to);
-  if (!toRepo) unknownAgentError(to, config);
+  // Verify recipient is known (recipient = original sender = 'to')
+  if (!getContactRemoteRepoUrl(config, to)) {
+    unknownAgentError(to, config);
+  }
+
+  const selfId = (config as { self?: { id?: string } }).self?.id;
+  if (to === selfId) {
+    throw new Error(`Cannot reply to yourself`);
+  }
 
   const body = readFileSync(resolve(opts.bodyFile), 'utf-8');
   const createdAt = new Date().toISOString().replace(/\.\d{3}/, '').replace(/:/g, '-');
@@ -67,27 +79,17 @@ export async function replyMessage(opts: ReplyOptions): Promise<{ filename: stri
     expects_reply: false,
   };
 
-  await ensureMaildirs(fromRepo);
-  await ensureMaildirs(toRepo);
-  await ensureGitIdentity(fromRepo);
-  await ensureGitIdentity(toRepo);
+  await ensureMaildirs(replierRepoPath);
+  await ensureGitIdentity(replierRepoPath);
 
-  const senderRepo = new GitRepo(fromRepo);
-  const recipientRepo = new GitRepo(toRepo);
+  const replierRepo = new GitRepo(replierRepoPath);
 
-  // Write to sender outbox
-  const senderContent = serializeFrontmatter(frontmatter) + '\n\n' + body;
-  await writeFileAtomic(resolve(senderRepo['repoPath'], 'outbox', filename), senderContent);
-  await senderRepo.add(`outbox/${filename}`);
-  await senderRepo.commit(`agm: send ${filename}`, `outbox/${filename}`);
-  await maybePush(senderRepo);
-
-  // Write to recipient inbox
-  const recipientContent = serializeFrontmatter(frontmatter) + '\n\n' + body;
-  await writeFileAtomic(resolve(recipientRepo['repoPath'], 'inbox', filename), recipientContent);
-  await recipientRepo.add(`inbox/${filename}`);
-  await recipientRepo.commit(`agm: deliver ${filename}`, `inbox/${filename}`);
-  await maybePush(recipientRepo);
+  // Write to replier outbox only (remote-only model: no recipient local writes)
+  const replierContent = serializeFrontmatter(frontmatter) + '\n\n' + body;
+  await writeFileAtomic(resolve(replierRepoPath, 'outbox', filename), replierContent);
+  await replierRepo.add(`outbox/${filename}`);
+  await replierRepo.commit(`agm: send ${filename}`, `outbox/${filename}`);
+  await maybePush(replierRepo);
 
   return { filename };
 }

@@ -1,14 +1,10 @@
 import { z } from 'zod';
 
-// --- Old format (v0 / agents map) ---
-export const AgentConfigSchema = z.object({
-  repo_path: z.string(),
-});
-
-// --- New format (v1 / self + notifications) ---
+// --- Remote-first config (v2) ---
 export const SelfConfigSchema = z.object({
   id: z.string().min(1, 'self.id is required'),
-  repo_path: z.string().min(1, 'self.repo_path is required'),
+  local_repo_path: z.string().min(1, 'self.local_repo_path is required'),
+  remote_repo_url: z.string().min(1, 'self.remote_repo_url is required'),
 });
 
 export const NotificationsConfigSchema = z.object({
@@ -20,62 +16,158 @@ export const RuntimeConfigSchema = z.object({
   poll_interval_seconds: z.number().optional().default(30),
 });
 
-export const ContactsConfigSchema = z.record(z.string(), z.string().min(1));
+export const ContactConfigSchema = z.object({
+  remote_repo_url: z.string().min(1),
+});
 
-export const ConfigSchemaV1 = z.object({
+export const ContactsConfigSchema = z.record(z.string(), ContactConfigSchema);
+
+export const ConfigSchemaV2 = z.object({
   self: SelfConfigSchema,
   contacts: ContactsConfigSchema.optional().default({}),
   notifications: NotificationsConfigSchema.optional().default({}),
   runtime: RuntimeConfigSchema.optional().default({}),
 });
 
-// --- Unified config (supports both v0 and v1) ---
-export const ConfigSchema = z.union([ConfigSchemaV1, z.object({
-  agents: z.record(z.string(), AgentConfigSchema),
+// --- Legacy v1 (self + plain path contacts) ---
+const LegacySelfConfigSchema = z.object({
+  id: z.string().min(1),
+  repo_path: z.string().min(1),
+});
+
+const LegacyContactsConfigSchema = z.record(z.string(), z.string().min(1));
+
+export const LegacyConfigSchemaV1 = z.object({
+  self: LegacySelfConfigSchema,
+  contacts: LegacyContactsConfigSchema.optional().default({}),
+  notifications: NotificationsConfigSchema.optional().default({}),
+  runtime: RuntimeConfigSchema.optional().default({}),
+});
+
+// --- Legacy v0 (agents map) ---
+const LegacyAgentsConfigSchema = z.record(z.string(), z.object({
+  repo_path: z.string(),
+}));
+
+export const LegacyConfigSchemaV0 = z.object({
+  agents: LegacyAgentsConfigSchema,
   runtime: z.object({
     poll_interval_seconds: z.number().optional().default(30),
   }).optional().default({}),
-})]);
+});
+
+// Unified config: v2 first, then legacy v1 and v0 for backward compat
+export const ConfigSchema = z.union([ConfigSchemaV2, LegacyConfigSchemaV1, LegacyConfigSchemaV0]);
 
 export type Config = z.infer<typeof ConfigSchema>;
-export type ConfigV1 = z.infer<typeof ConfigSchemaV1>;
-export type AgentConfig = z.infer<typeof AgentConfigSchema>;
+export type ConfigV2 = z.infer<typeof ConfigSchemaV2>;
+export type LegacyConfigV1 = z.infer<typeof LegacyConfigSchemaV1>;
+export type LegacyConfigV0 = z.infer<typeof LegacyConfigSchemaV0>;
 export type SelfConfig = z.infer<typeof SelfConfigSchema>;
 export type NotificationsConfig = z.infer<typeof NotificationsConfigSchema>;
 export type RuntimeConfig = z.infer<typeof RuntimeConfigSchema>;
+export type ContactConfig = z.infer<typeof ContactConfigSchema>;
 export type ContactsConfig = z.infer<typeof ContactsConfigSchema>;
 
-/** True if the config is the new v1 format (has self) */
-export function isConfigV1(c: Config): c is ConfigV1 {
-  return 'self' in c;
-}
+// Backward compat: AgentConfig type used by old v0 format
+const AgentConfigSchema = z.object({ repo_path: z.string() });
+export type AgentConfig = z.infer<typeof AgentConfigSchema>;
 
-/** Returns agent entries regardless of config format (v0 or v1) */
+/**
+ * Returns agent entries as [name, pathOrUrl] pairs.
+ * v2: returns [self.id, self.local_repo_path] + [contactName, contact.remote_repo_url]
+ * v1/legacy: returns [self.id, self.repo_path] + [contactName, contactPath]
+ */
 export function getAgentEntries(c: Config): Array<[string, string]> {
-  if (isConfigV1(c)) {
-    const entries: Array<[string, string]> = [[c.self.id, c.self.repo_path]];
-    for (const [name, repoPath] of Object.entries(c.contacts)) {
-      entries.push([name, repoPath]);
+  if (isConfigV2(c)) {
+    const entries: Array<[string, string]> = [[c.self.id, c.self.local_repo_path]];
+    for (const [name, contact] of Object.entries(c.contacts)) {
+      entries.push([name, contact.remote_repo_url]);
     }
     return entries;
   }
-  return Object.entries(c.agents as Record<string, { repo_path: string }>).map(
+  if (isConfigV1(c)) {
+    const v1 = c as LegacyConfigV1;
+    const entries: Array<[string, string]> = [[v1.self.id, v1.self.repo_path]];
+    for (const [name, path] of Object.entries(v1.contacts)) {
+      entries.push([name, path]);
+    }
+    return entries;
+  }
+  return Object.entries((c as LegacyConfigV0).agents).map(
     ([k, v]) => [k, v.repo_path],
   );
 }
 
-/** Looks up repo_path by agent name, returns null if not found */
-export function getAgentRepoPath(c: Config, name: string): string | null {
-  if (isConfigV1(c)) {
-    if (c.self.id === name) return c.self.repo_path;
-    return c.contacts[name] ?? null;
+/** True if config is the new v2 format (remote-first) */
+export function isConfigV2(c: Config): c is ConfigV2 {
+  return 'self' in c && 'remote_repo_url' in (c as ConfigV2).self;
+}
+
+/** True if config is legacy v1 format */
+export function isConfigV1(c: Config): c is LegacyConfigV1 {
+  return 'self' in c && 'repo_path' in (c as LegacyConfigV1).self;
+}
+
+/** Returns self ID (null for v0 which has no self concept) */
+export function getSelfId(c: Config): string | null {
+  if (isConfigV2(c)) return c.self.id;
+  if (isConfigV1(c)) return (c as LegacyConfigV1).self.id;
+  return null;
+}
+
+/** Returns self local repo path */
+export function getSelfLocalRepoPath(c: Config): string | null {
+  if (isConfigV2(c)) return c.self.local_repo_path;
+  if (isConfigV1(c)) return (c as LegacyConfigV1).self.repo_path;
+  return null;
+}
+
+/** Returns self remote repo URL */
+export function getSelfRemoteRepoUrl(c: Config): string | null {
+  if (isConfigV2(c)) return c.self.remote_repo_url;
+  return null;
+}
+
+/** Returns contact remote repo URL, null if not found */
+export function getContactRemoteRepoUrl(c: Config, name: string): string | null {
+  if (isConfigV2(c)) {
+    return c.contacts[name]?.remote_repo_url ?? null;
   }
-  return (c.agents as Record<string, { repo_path: string }>)[name]?.repo_path ?? null;
+  if (isConfigV1(c)) {
+    return (c as LegacyConfigV1).contacts[name] ?? null;
+  }
+  return null;
+}
+
+/** Returns all contact names */
+export function getContactNames(c: Config): string[] {
+  if (isConfigV2(c)) return Object.keys(c.contacts);
+  if (isConfigV1(c)) return Object.keys((c as LegacyConfigV1).contacts);
+  return [];
+}
+
+/**
+ * Looks up local repo path by agent name.
+ * v2: only self has a local path (contacts are remote-only)
+ * v1/legacy: self and contacts all have local paths
+ */
+export function getAgentRepoPath(c: Config, name: string): string | null {
+  if (isConfigV2(c)) {
+    if (c.self.id === name) return c.self.local_repo_path;
+    return null;
+  }
+  if (isConfigV1(c)) {
+    const v1 = c as LegacyConfigV1;
+    if (v1.self.id === name) return v1.self.repo_path;
+    return v1.contacts[name] ?? null;
+  }
+  return (c as LegacyConfigV0).agents[name]?.repo_path ?? null;
 }
 
 /** Throws a human-readable error for an unknown agent */
 export function unknownAgentError(agentName: string, config: Config): never {
-  if (isConfigV1(config)) {
+  if (isConfigV2(config)) {
     const selfId = config.self.id;
     const contactsKeys = Object.keys(config.contacts);
     const hasContacts = contactsKeys.length > 0;
@@ -83,15 +175,29 @@ export function unknownAgentError(agentName: string, config: Config): never {
     if (selfId === agentName) {
       hint = `\n\nHint: "${agentName}" is your own agent ID (self). You cannot send a message to yourself.`;
     } else if (!hasContacts) {
-      hint = `\n\nHint: Your config has no contacts yet. Add this to your config file:\ncontacts:\n  ${agentName}: /path/to/${agentName}-mailbox`;
+      hint = `\n\nHint: Add to your contacts in the config file:\ncontacts:\n  ${agentName}:\n    remote_repo_url: https://github.com/USER/${agentName}-mailbox.git`;
     } else {
-      hint = `\n\nHint: "${agentName}" is not in your contacts. Add this to your config file:\ncontacts:\n  ${agentName}: /path/to/${agentName}-mailbox\n\nYour current contacts: ${contactsKeys.join(', ') || '(none)'}`;
+      hint = `\n\nHint: "${agentName}" is not in your contacts. Add:\ncontacts:\n  ${agentName}:\n    remote_repo_url: https://github.com/USER/${agentName}-mailbox.git\n\nYour current contacts: ${contactsKeys.join(', ')}`;
     }
     throw new Error(`Unknown agent: ${agentName}${hint}`);
   }
-  // Old format
-  const agents = Object.keys(config.agents as Record<string, unknown>);
+  if (isConfigV1(config)) {
+    const v1 = config as LegacyConfigV1;
+    const selfId = v1.self.id;
+    const contactsKeys = Object.keys(v1.contacts);
+    const hasContacts = contactsKeys.length > 0;
+    let hint = '';
+    if (selfId === agentName) {
+      hint = `\n\nHint: "${agentName}" is your own agent ID (self).`;
+    } else if (!hasContacts) {
+      hint = `\n\nHint: Add to contacts:\ncontacts:\n  ${agentName}: /path/to/${agentName}`;
+    } else {
+      hint = `\n\nHint: "${agentName}" not in contacts. Add:\ncontacts:\n  ${agentName}: /path/to/${agentName}\n\nYour contacts: ${contactsKeys.join(', ')}`;
+    }
+    throw new Error(`Unknown agent: ${agentName}${hint}`);
+  }
+  const agents = Object.keys((config as LegacyConfigV0).agents);
   throw new Error(
-    `Unknown agent: ${agentName}\n\nHint: "${agentName}" is not defined in your config.\nYour agents: ${agents.join(', ')}\n\nConfig format:\nagents:\n  ${agentName}:\n    repo_path: /path/to/${agentName}-mailbox`,
+    `Unknown agent: ${agentName}\n\nHint: "${agentName}" is not in your config.\nYour agents: ${agents.join(', ')}`,
   );
 }

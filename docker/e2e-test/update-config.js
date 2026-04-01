@@ -1,15 +1,15 @@
 #!/usr/bin/env node
-// Updates AGM config to add a contact entry
+// Updates AGM config to add a contact entry (v2 format with remote_repo_url)
 const fs = require('fs');
 const path = require('path');
 const yaml = require('/workspace/agent-git-mail/node_modules/yaml');
 
 const configPath = process.env.AGM_CONFIG_PATH || path.join(process.env.HOME || '/root', '.config', 'agm', 'config.yaml');
 const contactName = process.argv[2];
-const contactRepo = process.argv[3];
+const contactRemoteUrl = process.argv[3];
 
-if (!contactName || !contactRepo) {
-  console.error('Usage: update-config.js <contactName> <contactRepoPath>');
+if (!contactName || !contactRemoteUrl) {
+  console.error('Usage: update-config.js <contactName> <contactRemoteUrl>');
   process.exit(1);
 }
 
@@ -20,9 +20,10 @@ const cfg = yaml.parse(raw);
 if (!cfg.contacts) {
   cfg.contacts = {};
 }
-cfg.contacts[contactName] = contactRepo;
+// v2 format: contacts[name] = { remote_repo_url }
+cfg.contacts[contactName] = { remote_repo_url: contactRemoteUrl };
 
 fs.writeFileSync(configPath, yaml.stringify(cfg), 'utf-8');
-console.log(`Added ${contactName} -> ${contactRepo} in ${configPath}`);
+console.log(`Added ${contactName} -> ${contactRemoteUrl} in ${configPath}`);
 console.log('Updated config:');
 console.log(fs.readFileSync(configPath, 'utf-8'));

@@ -1,89 +1,80 @@
 services:
-  mt:
-    container_name: agm-e2e-mt
+  atlas:
+    container_name: agm-e2e-atlas
     build:
       context: ../..
       dockerfile: docker/e2e-test/Dockerfile
     working_dir: /workspace
     environment:
-      OPENCLAW_HOME: /workspace/.openclaw-mt
-      OPENCLAW_CONFIG_PATH: /workspace/.openclaw-mt/openclaw.json
+      OPENCLAW_HOME: /workspace/.openclaw-atlas
+      OPENCLAW_CONFIG_PATH: /workspace/.openclaw-atlas/openclaw.json
       AGM_FORCED_SESSION_KEY: ${AGM_FORCED_SESSION_KEY:-agent:main:main}
       GLM_API_KEY: ${GLM_API_KEY:-}
+      GITHUB_TOKEN: ${GITHUB_TOKEN:-}
     volumes:
-      - agm-mailboxes:/workspace/mailbox
-      - ./mt-openclaw.json:/workspace/.openclaw-mt/openclaw.json:ro
+      - ./atlas-openclaw.json:/workspace/.openclaw-atlas/openclaw.json:ro
       - ../../:/workspace/agent-git-mail
     network_mode: host
     tty: true
     stdin_open: true
-    command: >
-      bash -lc "
-        echo '=== MT container starting ===' &&
+    command:
+      - bash
+      - -lc
+      - |
+        set -x &&
         ln -sf /workspace/agent-git-mail/node_modules/.bin/openclaw /usr/local/bin/openclaw &&
-        echo '=== Creating and initializing MT mailbox ===' &&
-        mkdir -p /workspace/mailbox/mt &&
-        git init /workspace/mailbox/mt &&
-        git -C /workspace/mailbox/mt config user.name 'mt-agent' &&
-        git -C /workspace/mailbox/mt config user.email 'mt@e2e.local' &&
-        node /workspace/agent-git-mail/packages/agm/dist/index.js bootstrap --self-id mt --self-repo-path /workspace/mailbox/mt --skip-plugin-install 2>&1 &&
-        echo '=== Adding HEX contact to MT config ===' &&
-        node /workspace/agent-git-mail/docker/e2e-test/update-config.js hex /workspace/mailbox/hex &&
-        echo '=== Configuring MT git remote ===' &&
-        (cd /workspace/mailbox/mt && git remote add hex 'file:///workspace/mailbox/hex/.git' || true) &&
-        echo '=== Starting MT OpenClaw gateway ===' &&
-        nohup openclaw gateway run > /tmp/openclaw-mt.log 2>&1 &
-        sleep 5 &&
-        cat /tmp/openclaw-mt.log | tail -30 &&
-        echo '=== MT ready ===' &&
+        echo '=== Configure GitHub auth ===' &&
+        set +x && echo "machine github.com login T0UGH password ${GITHUB_TOKEN}" > ~/.netrc && chmod 600 ~/.netrc && set -x &&
+        echo '=== Cloning atlas mailbox from GitHub ===' &&
+        rm -rf /workspace/mailbox/atlas &&
+        git clone https://github.com/T0UGH/test-mailbox-a.git /workspace/mailbox/atlas 2>&1 &&
+        echo '=== Adding boron remote (for daemon discovery) ===' &&
+        (git -C /workspace/mailbox/atlas remote add boron https://github.com/T0UGH/test-mailbox-b.git 2>/dev/null || true) &&
+        echo '=== Bootstrapping atlas ===' &&
+        mkdir -p /workspace/.openclaw-atlas &&
+        node /workspace/agent-git-mail/packages/agm/dist/index.js bootstrap --self-id atlas --self-remote-repo-url https://github.com/T0UGH/test-mailbox-a.git --self-local-repo-path /workspace/mailbox/atlas --skip-plugin-install > /tmp/atlas-init.log 2>&1 &&
+        echo '=== Adding boron contact ===' &&
+        node /workspace/agent-git-mail/docker/e2e-test/update-config.js boron https://github.com/T0UGH/test-mailbox-b.git >> /tmp/atlas-init.log 2>&1 &&
+        cat /tmp/atlas-init.log &&
+        echo '=== Atlas ready ===' &&
         tail -f /dev/null
-      "
 
-  hex:
-    container_name: agm-e2e-hex
+  boron:
+    container_name: agm-e2e-boron
     build:
       context: ../..
       dockerfile: docker/e2e-test/Dockerfile
     working_dir: /workspace
     environment:
-      OPENCLAW_HOME: /workspace/.openclaw-hex
-      OPENCLAW_CONFIG_PATH: /workspace/.openclaw-hex/openclaw.json
+      OPENCLAW_HOME: /workspace/.openclaw-boron
+      OPENCLAW_CONFIG_PATH: /workspace/.openclaw-boron/openclaw.json
       AGM_FORCED_SESSION_KEY: ${AGM_FORCED_SESSION_KEY:-agent:main:main}
       GLM_API_KEY: ${GLM_API_KEY:-}
+      GITHUB_TOKEN: ${GITHUB_TOKEN:-}
     volumes:
-      - agm-mailboxes:/workspace/mailbox
-      - ./hex-openclaw.json:/workspace/.openclaw-hex/openclaw.json:ro
+      - ./boron-openclaw.json:/workspace/.openclaw-boron/openclaw.json:ro
       - ../../:/workspace/agent-git-mail
     network_mode: host
     tty: true
     stdin_open: true
-    depends_on:
-      mt:
-        condition: service_started
-    command: >
-      bash -lc "
-        echo '=== HEX container starting ===' &&
+    command:
+      - bash
+      - -lc
+      - |
+        set -x &&
         ln -sf /workspace/agent-git-mail/node_modules/.bin/openclaw /usr/local/bin/openclaw &&
-        echo '=== Waiting for MT mailbox to be ready ===' &&
-        until [ -d /workspace/mailbox/mt/.git ]; do sleep 1; done &&
-        echo '=== Creating and initializing HEX mailbox ===' &&
-        mkdir -p /workspace/mailbox/hex &&
-        git init /workspace/mailbox/hex &&
-        git -C /workspace/mailbox/hex config user.name 'hex-agent' &&
-        git -C /workspace/mailbox/hex config user.email 'hex@e2e.local' &&
-        node /workspace/agent-git-mail/packages/agm/dist/index.js bootstrap --self-id hex --self-repo-path /workspace/mailbox/hex --skip-plugin-install 2>&1 &&
-        echo '=== Adding MT contact to HEX config ===' &&
-        node /workspace/agent-git-mail/docker/e2e-test/update-config.js mt /workspace/mailbox/mt &&
-        echo '=== Configuring HEX git remote ===' &&
-        (cd /workspace/mailbox/hex && git remote add mt 'file:///workspace/mailbox/mt/.git' || true) &&
-        echo '=== Starting HEX OpenClaw gateway ===' &&
-        nohup openclaw gateway run > /tmp/openclaw-hex.log 2>&1 &
-        sleep 5 &&
-        cat /tmp/openclaw-hex.log | tail -30 &&
-        echo '=== HEX ready ===' &&
+        echo '=== Configure GitHub auth ===' &&
+        set +x && echo "machine github.com login T0UGH password ${GITHUB_TOKEN}" > ~/.netrc && chmod 600 ~/.netrc && set -x &&
+        echo '=== Cloning boron mailbox from GitHub ===' &&
+        rm -rf /workspace/mailbox/boron &&
+        git clone https://github.com/T0UGH/test-mailbox-b.git /workspace/mailbox/boron 2>&1 &&
+        echo '=== Adding atlas remote (for daemon discovery) ===' &&
+        (git -C /workspace/mailbox/boron remote add atlas https://github.com/T0UGH/test-mailbox-a.git 2>/dev/null || true) &&
+        echo '=== Bootstrapping boron ===' &&
+        mkdir -p /workspace/.openclaw-boron &&
+        node /workspace/agent-git-mail/packages/agm/dist/index.js bootstrap --self-id boron --self-remote-repo-url https://github.com/T0UGH/test-mailbox-b.git --self-local-repo-path /workspace/mailbox/boron --skip-plugin-install > /tmp/boron-init.log 2>&1 &&
+        echo '=== Adding atlas contact ===' &&
+        node /workspace/agent-git-mail/docker/e2e-test/update-config.js atlas https://github.com/T0UGH/test-mailbox-a.git >> /tmp/boron-init.log 2>&1 &&
+        cat /tmp/boron-init.log &&
+        echo '=== Boron ready ===' &&
         tail -f /dev/null
-      "
-
-volumes:
-  agm-mailboxes:
-    name: agm-e2e-mailboxes

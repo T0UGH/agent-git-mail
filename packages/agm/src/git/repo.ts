@@ -84,4 +84,46 @@ export class GitRepo {
       return false;
     }
   }
+
+  async fetchRemote(remoteName: string): Promise<void> {
+    try {
+      this.run(['fetch', remoteName, '--prune']);
+    } catch (e) {
+      if (e instanceof GitExecError && e.exitCode === 0) return;
+      throw e;
+    }
+  }
+
+  async getRemoteRef(remoteName: string, branch?: string): Promise<string | null> {
+    const ref = branch ? `refs/remotes/${remoteName}/${branch}` : `refs/remotes/${remoteName}/HEAD`;
+    try {
+      return this.run(['rev-parse', '--verify', ref]);
+    } catch {
+      return null;
+    }
+  }
+
+  async showFileAtRef(ref: string, path: string): Promise<string | null> {
+    try {
+      return this.run(['show', `${ref}:${path}`]);
+    } catch {
+      return null;
+    }
+  }
+
+  async getRemoteUrl(name: string): Promise<string | null> {
+    try {
+      return this.run(['remote', 'get-url', name]);
+    } catch {
+      return null;
+    }
+  }
+
+  async addRemote(name: string, url: string): Promise<void> {
+    this.run(['remote', 'add', name, url]);
+  }
+
+  async setRemoteUrl(name: string, url: string): Promise<void> {
+    this.run(['remote', 'set-url', name, url]);
+  }
 }

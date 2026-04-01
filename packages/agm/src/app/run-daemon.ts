@@ -4,7 +4,8 @@ import { parseFrontmatter } from '../domain/frontmatter.js';
 import { readFileSync } from 'fs';
 import { resolve } from 'path';
 import type { Config } from '../config/schema.js';
-import { getAgentEntries } from '../config/index.js';
+import { getAgentEntries, isConfigV2 } from '../config/index.js';
+import { discoverNewMail, type DiscoveredMail } from './remote-mail-discovery.js';
 
 export interface DaemonOptions {
   config: Config;
@@ -14,14 +15,22 @@ export interface DaemonOptions {
 
 export async function runDaemon(opts: DaemonOptions): Promise<void> {
   const pollInterval = (opts.config.runtime?.poll_interval_seconds ?? 30) * 1000;
-  const allEntries = getAgentEntries(opts.config);
-  const entries: Array<[string, { repo_path: string }]> = opts.agentName
-    ? allEntries.filter(([name]) => name === opts.agentName).map(([name, repoPath]) => [name, { repo_path: repoPath }])
-    : allEntries.map(([name, repoPath]) => [name, { repo_path: repoPath }]);
 
   if (opts.onNewMail) {
     // One-shot poll for testing
-    await runPoll(entries, opts.onNewMail);
+    if (isConfigV2(opts.config)) {
+      const mail = await discoverNewMail({ config: opts.config });
+      for (const m of mail) {
+        await opts.onNewMail({ agent: opts.agentName ?? m.contact, filename: m.filename, from: m.from });
+      }
+    } else {
+      // Legacy v0/v1: use old local-watching approach
+      const allEntries = getAgentEntries(opts.config);
+      const entries: Array<[string, { repo_path: string }]> = opts.agentName
+        ? allEntries.filter(([name]) => name === opts.agentName).map(([name, repoPath]) => [name, { repo_path: repoPath }])
+        : allEntries.map(([name, repoPath]) => [name, { repo_path: repoPath }]);
+      await runPollLegacy(entries, opts.onNewMail);
+    }
     return;
   }
 
@@ -29,8 +38,10 @@ export async function runDaemon(opts: DaemonOptions): Promise<void> {
   while (true) {
     const start = Date.now();
     try {
-      for (const [name, agent] of entries) {
-        await watchAgent(name, agent, opts.onNewMail);
+      if (isConfigV2(opts.config)) {
+        await runDaemonV2(opts);
+      } else {
+        await runDaemonLegacy(opts);
       }
     } catch (e) {
       console.error('[daemon] poll error:', e);
@@ -38,6 +49,25 @@ export async function runDaemon(opts: DaemonOptions): Promise<void> {
     const elapsed = Date.now() - start;
     const sleepTime = Math.max(0, pollInterval - elapsed);
     await sleep(sleepTime);
+  }
+}
+
+async function runDaemonV2(opts: DaemonOptions): Promise<void> {
+  if (!opts.onNewMail) return;
+  const mail = await discoverNewMail({ config: opts.config });
+  for (const m of mail) {
+    console.log(`[daemon] new mail from remote: from=${m.from} file=${m.filename} contact=${m.contact}`);
+    await opts.onNewMail({ agent: opts.agentName ?? m.contact, filename: m.filename, from: m.from });
+  }
+}
+
+async function runDaemonLegacy(opts: DaemonOptions): Promise<void> {
+  const allEntries = getAgentEntries(opts.config);
+  const entries: Array<[string, { repo_path: string }]> = opts.agentName
+    ? allEntries.filter(([name]) => name === opts.agentName).map(([name, repoPath]) => [name, { repo_path: repoPath }])
+    : allEntries.map(([name, repoPath]) => [name, { repo_path: repoPath }]);
+  for (const [name, agent] of entries) {
+    await watchAgent(name, agent, opts.onNewMail);
   }
 }
 
@@ -86,7 +116,7 @@ async function watchAgent(
   await waterline.write(currentSha);
 }
 
-async function runPoll(
+async function runPollLegacy(
   agents: [string, { repo_path: string }][],
   onNewMail: (mail: { agent: string; filename: string; from: string }) => Promise<void>,
 ): Promise<void> {

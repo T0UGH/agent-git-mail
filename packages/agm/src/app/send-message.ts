@@ -4,7 +4,7 @@ import { GitRepo } from '../git/repo.js';
 import { generateFilename, generateUniqueSuffix } from '../domain/filename.js';
 import { serializeFrontmatter, type MessageFrontmatter } from '../domain/frontmatter.js';
 import { loadConfig } from '../config/load.js';
-import { getAgentRepoPath, unknownAgentError } from '../config/index.js';
+import { getAgentRepoPath, getContactRemoteRepoUrl, unknownAgentError, isConfigV2 } from '../config/index.js';
 import { maybePush } from './git-push.js';
 import { ensureGitIdentity, ensureMaildirs } from '../git/preflight.js';
 
@@ -18,13 +18,26 @@ export interface SendOptions {
   configPath?: string;
 }
 
+/**
+ * Send a message. Remote-only transport: only writes to sender's own outbox and pushes
+ * to sender's origin remote. The recipient's daemon detects the message by fetching
+ * the sender's remote (sender's outbox commit) and diffing against per-contact waterline.
+ */
 export async function sendMessage(opts: SendOptions): Promise<{ filename: string }> {
   const config = loadConfig(opts.configPath);
 
-  const fromRepo = getAgentRepoPath(config, opts.from);
-  const toRepo = getAgentRepoPath(config, opts.to);
-  if (!fromRepo) unknownAgentError(opts.from, config);
-  if (!toRepo) unknownAgentError(opts.to, config);
+  const senderRepoPath = getAgentRepoPath(config, opts.from);
+  if (!senderRepoPath) unknownAgentError(opts.from, config);
+
+  // Verify recipient is known (v2: contacts have remote URLs, no local paths; legacy: same getAgentRepoPath works)
+  if (!getContactRemoteRepoUrl(config, opts.to)) {
+    unknownAgentError(opts.to, config);
+  }
+
+  const selfId = (config as { self?: { id?: string } }).self?.id;
+  if (opts.to === selfId) {
+    throw new Error(`Cannot send to yourself (${opts.to})`);
+  }
 
   const body = readFileSync(resolve(opts.bodyFile), 'utf-8');
   const createdAt = new Date().toISOString().replace(/\.\d{3}/, '').replace(/:/g, '-');
@@ -40,29 +53,19 @@ export async function sendMessage(opts: SendOptions): Promise<{ filename: string
     expects_reply: opts.expectsReply ?? false,
   };
 
-  await ensureMaildirs(fromRepo);
-  await ensureMaildirs(toRepo);
-  await ensureGitIdentity(fromRepo);
-  await ensureGitIdentity(toRepo);
+  // Ensure sender's outbox exists and sender has git identity set
+  await ensureMaildirs(senderRepoPath);
+  await ensureGitIdentity(senderRepoPath);
 
-  const senderRepo = new GitRepo(fromRepo);
-  const recipientRepo = new GitRepo(toRepo);
+  const senderRepo = new GitRepo(senderRepoPath);
 
-  // Write to sender outbox
+  // Write to sender outbox (only place we write in remote-only model)
   const senderContent = serializeFrontmatter(frontmatter) + '\n\n' + body;
-  const outboxPath = resolve(senderRepo['repoPath'], 'outbox', filename);
+  const outboxPath = resolve(senderRepoPath, 'outbox', filename);
   await writeFileAtomic(outboxPath, senderContent);
   await senderRepo.add(`outbox/${filename}`);
   await senderRepo.commit(`agm: send ${filename}`, `outbox/${filename}`);
   await maybePush(senderRepo);
-
-  // Write to recipient inbox
-  const recipientContent = serializeFrontmatter(frontmatter) + '\n\n' + body;
-  const inboxPath = resolve(recipientRepo['repoPath'], 'inbox', filename);
-  await writeFileAtomic(inboxPath, recipientContent);
-  await recipientRepo.add(`inbox/${filename}`);
-  await recipientRepo.commit(`agm: deliver ${filename}`, `inbox/${filename}`);
-  await maybePush(recipientRepo);
 
   return { filename };
 }
