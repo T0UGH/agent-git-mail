@@ -56,8 +56,16 @@ export async function replyMessage(opts: ReplyOptions): Promise<{ filename: stri
   const to = original.from;
 
   // Verify recipient is known (recipient = original sender = 'to')
-  if (!getContactRemoteRepoUrl(config, to)) {
-    unknownAgentError(to, config);
+  // v2: contacts have remote URLs (no local paths), use getContactRemoteRepoUrl
+  // legacy v0/v1: use getAgentRepoPath which works for agents map
+  if (isConfigV2(config)) {
+    if (!getContactRemoteRepoUrl(config, to)) {
+      unknownAgentError(to, config);
+    }
+  } else {
+    if (!getAgentRepoPath(config, to)) {
+      unknownAgentError(to, config);
+    }
   }
 
   const selfId = (config as { self?: { id?: string } }).self?.id;

@@ -29,9 +29,17 @@ export async function sendMessage(opts: SendOptions): Promise<{ filename: string
   const senderRepoPath = getAgentRepoPath(config, opts.from);
   if (!senderRepoPath) unknownAgentError(opts.from, config);
 
-  // Verify recipient is known (v2: contacts have remote URLs, no local paths; legacy: same getAgentRepoPath works)
-  if (!getContactRemoteRepoUrl(config, opts.to)) {
-    unknownAgentError(opts.to, config);
+  // Verify recipient is known
+  // v2: contacts have remote URLs (no local paths), use getContactRemoteRepoUrl
+  // legacy v0/v1: use getAgentRepoPath which works for agents map
+  if (isConfigV2(config)) {
+    if (!getContactRemoteRepoUrl(config, opts.to)) {
+      unknownAgentError(opts.to, config);
+    }
+  } else {
+    if (!getAgentRepoPath(config, opts.to)) {
+      unknownAgentError(opts.to, config);
+    }
   }
 
   const selfId = (config as { self?: { id?: string } }).self?.id;

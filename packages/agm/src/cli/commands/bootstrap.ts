@@ -305,25 +305,21 @@ export async function cmdBootstrap(argv: BootstrapOptions): Promise<void> {
     process.exit(EXIT_INPUT_ERROR);
   }
 
-  // 3. Clone or open local repo
-  const cloneResult = cloneOrOpenRepo(selfLocalRepoPath, selfRemoteRepoUrl);
-  if (!cloneResult.ok) {
-    if (json) outputJson({ ...cloneResult, configPath: targetConfigPath, selfId, selfRemoteUrl: selfRemoteRepoUrl, selfLocalRepoPath });
-    else outputText(cloneResult);
-    process.exit(cloneResult.code);
-  }
-
-  // 4. Check for config conflict
-  const conflictCheck = checkConfigConflict(targetConfigPath, selfId, selfRemoteRepoUrl);
-  if (conflictCheck) {
-    if (json) outputJson({ ...conflictCheck, configPath: targetConfigPath, selfId, selfRemoteUrl: selfRemoteRepoUrl, selfLocalRepoPath });
-    else outputText(conflictCheck);
-    process.exit(conflictCheck.code);
-  }
-
-  // 5. Dry-run
+  // 3. Dry-run (check early to avoid side effects)
   if (dryRun) {
     const configYaml = buildConfigYaml(selfId, selfRemoteRepoUrl, selfLocalRepoPath);
+    // Determine what clone would do without actually cloning
+    let cloneAction: string;
+    if (!existsSync(selfLocalRepoPath)) {
+      cloneAction = 'git clone (remote exists, local missing)';
+    } else {
+      try {
+        execSync('git rev-parse --git-dir', { cwd: selfLocalRepoPath, stdio: 'pipe' });
+        cloneAction = 'reuse existing clone (origin verified on write)';
+      } catch {
+        cloneAction = 'git clone (not a git repo, would re-clone)';
+      }
+    }
     const result: CheckResult & { details: Record<string, unknown> } = {
       ok: true,
       code: 0,
@@ -331,7 +327,7 @@ export async function cmdBootstrap(argv: BootstrapOptions): Promise<void> {
       message: 'Dry-run — would do the following:',
       details: {
         configPath: targetConfigPath,
-        cloneAction: cloneResult.status,
+        cloneAction,
         pluginInstall: !skipPluginInstall,
         selfId,
         selfRemoteUrl: selfRemoteRepoUrl,
@@ -343,7 +339,7 @@ export async function cmdBootstrap(argv: BootstrapOptions): Promise<void> {
     else {
       console.log('🔍 Dry-run — would do the following:\n');
       console.log(`   Config path: ${targetConfigPath}`);
-      console.log(`   Clone action: ${cloneResult.status} (${selfRemoteRepoUrl} → ${selfLocalRepoPath})`);
+      console.log(`   Clone action: ${cloneAction}`);
       console.log(`   Self ID: ${selfId}`);
       console.log(`   Remote URL: ${selfRemoteRepoUrl}`);
       console.log(`   Local path: ${selfLocalRepoPath}`);
@@ -352,6 +348,22 @@ export async function cmdBootstrap(argv: BootstrapOptions): Promise<void> {
       console.log('   ' + configYaml.replace(/\n/g, '\n   '));
     }
     return;
+  }
+
+  // 4. Clone or open local repo
+  const cloneResult = cloneOrOpenRepo(selfLocalRepoPath, selfRemoteRepoUrl);
+  if (!cloneResult.ok) {
+    if (json) outputJson({ ...cloneResult, configPath: targetConfigPath, selfId, selfRemoteUrl: selfRemoteRepoUrl, selfLocalRepoPath });
+    else outputText(cloneResult);
+    process.exit(cloneResult.code);
+  }
+
+  // 5. Check for config conflict
+  const conflictCheck = checkConfigConflict(targetConfigPath, selfId, selfRemoteRepoUrl);
+  if (conflictCheck) {
+    if (json) outputJson({ ...conflictCheck, configPath: targetConfigPath, selfId, selfRemoteUrl: selfRemoteRepoUrl, selfLocalRepoPath });
+    else outputText(conflictCheck);
+    process.exit(conflictCheck.code);
   }
 
   // 6. Install plugin

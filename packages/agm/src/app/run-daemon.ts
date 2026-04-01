@@ -53,11 +53,15 @@ export async function runDaemon(opts: DaemonOptions): Promise<void> {
 }
 
 async function runDaemonV2(opts: DaemonOptions): Promise<void> {
-  if (!opts.onNewMail) return;
+  // Discover new mail from all contact remotes
   const mail = await discoverNewMail({ config: opts.config });
+  if (mail.length === 0) return;
+
   for (const m of mail) {
     console.log(`[daemon] new mail from remote: from=${m.from} file=${m.filename} contact=${m.contact}`);
-    await opts.onNewMail({ agent: opts.agentName ?? m.contact, filename: m.filename, from: m.from });
+    if (opts.onNewMail) {
+      await opts.onNewMail({ agent: opts.agentName ?? m.contact, filename: m.filename, from: m.from });
+    }
   }
 }
 

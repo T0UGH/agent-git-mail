@@ -1,6 +1,6 @@
 import type { OpenClawPluginApi, OpenClawPluginService } from 'openclaw';
 import type { Config, AgentConfig } from '@t0u9h/agent-git-mail/config';
-import { isConfigV1, getAgentEntries } from '@t0u9h/agent-git-mail/config';
+import { isConfigV1, isConfigV2, getAgentEntries } from '@t0u9h/agent-git-mail/config';
 import { SessionBindingStore } from './session-binding.js';
 import { existsSync } from 'fs';
 import { execSync } from 'child_process';
@@ -116,6 +116,58 @@ async function pollOnce(logger: { info(msg: string): void; error(msg: string): v
   }
   const config = result.data;
 
+  if (isConfigV2(config)) {
+    // v2 / remote-repo-only: use discoverNewMail for per-contact remote discovery
+    const { discoverNewMail } = await import('@t0u9h/agent-git-mail/app/remote-mail-discovery.js');
+
+    // Preflight: check self local repo exists
+    const selfRepoPath = config.self.local_repo_path;
+    if (!existsSync(selfRepoPath)) {
+      (logger.warn ?? logger.info)(`[agm] stage=preflight_failed reason=missing_self_repo_path id=${config.self.id} path=${selfRepoPath}`);
+      return;
+    }
+    try {
+      execSync('git rev-parse --git-dir', { cwd: selfRepoPath, stdio: 'pipe' });
+    } catch {
+      (logger.warn ?? logger.info)(`[agm] stage=preflight_failed reason=not_a_git_repo id=${config.self.id} path=${selfRepoPath}`);
+      return;
+    }
+    logger.info(`[agm] stage=preflight_passed id=${config.self.id} repo=${selfRepoPath}`);
+
+    const forcedSessionKey = process.env.AGM_FORCED_SESSION_KEY ?? null;
+    const selfId = config.self.id;
+    const boundSessionKey = sessionBindings.get(selfId);
+    const { sessionKey, routeSource } = resolveRouteTarget({ forcedSessionKey, boundSessionKey });
+
+    logger.info(
+      `[agm] stage=v2_discovery id=${selfId} source=${routeSource} sessionKey=${sessionKey}`,
+    );
+
+    try {
+      const mail = await discoverNewMail({ config });
+      logger.info(`[agm] stage=v2_discovery_done id=${selfId} found=${mail.length}`);
+
+      for (const m of mail) {
+        const text = `New agent git mail: from=${m.from}, file=${m.filename}`;
+        logger.info(
+          `[agm] stage=deliver_prepare agent=${selfId} contact=${m.contact} sessionKey=${sessionKey} file=${m.filename} from=${m.from}`,
+        );
+        pluginRuntime!.system.enqueueSystemEvent(text, { sessionKey });
+        logger.info(
+          `[agm] stage=enqueue_done agent=${selfId} sessionKey=${sessionKey} file=${m.filename}`,
+        );
+        pluginRuntime!.system.requestHeartbeatNow({ sessionKey });
+        logger.info(
+          `[agm] stage=heartbeat_requested agent=${selfId} sessionKey=${sessionKey} file=${m.filename}`,
+        );
+      }
+    } catch (e) {
+      logger.error(`[agm] stage=v2_discovery_error id=${selfId} error=${String(e)}`);
+    }
+    return;
+  }
+
+  // Legacy v0/v1: use local-watching approach
   // Preflight check for v1 config: validate self.repo_path
   if (isConfigV1(config)) {
     const selfRepoPath = config.self.repo_path;
