@@ -31,7 +31,7 @@ packages/agm/src/
   app/
     run-daemon.ts         # 改: console.log + appendEvent() 双写
     activator/
-      checkpoint-store.ts  # 改: markActivated 时写事件
+      checkpoint-store.ts  # 只做 state persistence，不写事件
 ```
 
 ```
@@ -66,7 +66,8 @@ packages/agm/test/
 
 **0.2 `src/log/events.ts`**
 - `getEventsPath()` → `~/.config/agm/events.jsonl`
-- `appendEvent(event: EventRecord): void` — 原子写入（先 .tmp 再 rename）
+- `appendEvent(event: EventRecord): void` — **append-only**，直接 `fs.appendFileSync(path, line + '\n')`
+  - 不使用 tmp + rename（JSONL append-only 语义不需要原子 rename）
 - `parseEvents(opts?: { limit?: number; since?: Date; types?: EventType[] }): EventRecord[]`
 - `queryLastEvent(type: EventType): EventRecord | null`
 - 写 `test/log/events.test.ts`：UT + 集成测试（实际读写 /tmp 下的测试 events.jsonl）
@@ -115,7 +116,9 @@ export interface CheckResult {
 **1.5 `src/doctor/checks/state.ts`**
 - 检查 `~/.config/agm/activation-state.json` 存在且可解析
 - checkpoint key 格式合理（`::` 分隔）
-- waterline 文件可读
+- waterline ref 检查：在 self repo 中是否存在 `refs/waterline`，能否解析到合法 commit sha
+  - 如果不存在 → 首次运行可接受（首次运行不会有 waterline ref）
+  - 如果存在但解析失败 → FAIL
 - 写 `test/doctor/checks/state.test.ts`
 
 ---
@@ -156,12 +159,16 @@ export interface CheckResult {
 - `new_mail_detected` — 发现新邮件时写
 - `pull_timeout` — pull 超时时写
 
-**4.2 `src/activator/checkpoint-store.ts` — 改**
-- `markActivated()` 时写 `activation_sent`
-- activation 失败时写 `activation_failed`
-- `activation_skipped` — `hasActivated()` 返回 true 时被调用方写入
+**4.2 `src/activator/checkpoint-store.ts` — 保持不变**
+- 只做 state persistence：`hasActivated()` / `markActivated()` / `getActivatedFiles()`
+- **不写任何事件**
 
-**4.3 `src/cli/commands/doctor.ts` — 改**
+**4.3 `src/app/run-daemon.ts` — 改（activation 事件）**
+- `activation_sent` — activator.activate() 成功时
+- `activation_failed` — activator.activate() 失败时
+- `activation_skipped_checkpoint` — hasActivated() 返回 true 时跳过
+
+**4.4 `src/cli/commands/doctor.ts` — 改**
 - `doctor_run` — doctor 每次运行时写事件
 
 ---
@@ -172,9 +179,13 @@ export interface CheckResult {
 - `test/doctor/checks/*.test.ts` — 每个 check 模块独立测试，mock 外部依赖（fs、GitRepo、events）
 - `test/log/events.test.ts` — 事件 append/parse/query，用 `AGM_CONFIG_DIR=/tmp/agm-test-events` 隔离
 
-### Integration Tests（Docker）
-- `test/doctor/doctor.test.ts` — 全量 doctor 跑一遍，用 fake config/git repo
+### Local Integration Tests（本地，vitest）
+- `test/doctor/doctor.test.ts` — 全量 doctor 汇总跑一遍，用 fake config/git repo
 - `test/log/cli.test.ts` — agm log CLI 跑一遍，验证 JSONL 读写
+
+### Docker Integration Tests（只放 daemon-activation 链路测试）
+- `test/docker/integration-tests.sh` — 现有测试保持不变
+- doctor / log 的 local integration tests 不需要进 Docker
 
 ### 验证命令
 
@@ -213,7 +224,18 @@ node dist/index.js log --tail 5
 
 ## 主要风险点
 
-1. **Daemon 双写性能**：每次 poll 写事件文件可能成为 IO 瓶颈。第一版用原子 rename，后续如需要再优化。
-2. **events.jsonl 无限增长**：第一版不实现 rotation，由用户手动清理。以后再加 `--max-size` 或 logrotate。
-3. **runtime check 的时间窗口**：N 分钟内无事件算 FAIL，这个阈值需要调优。先硬编码 10min，后续可 config。
-4. **checkpoint-store 写事件耦合**：把 `activation_skipped` 事件写入点放在 `hasActivated()` 调用方（run-daemon），而不是 `checkpoint-store` 内部，避免模块职责混乱。
+1. **Daemon 双写性能**：每次 poll 写事件文件可能成为 IO 瓶颈。第一版 append-only，后续如需要再优化。
+2. **runtime check 的时间窗口**：N 分钟内无事件算 FAIL，这个阈值需要调优。先硬编码 10min，后续可 config。
+3. **checkpoint-store 不写事件**：activation 事件的写入点放在 run-daemon，不侵入 checkpoint-store 内部。
+
+---
+
+## Follow-up Debt（第一版后必须跟进）
+
+### 1. events.jsonl 无限增长
+- **当前**：append-only，无自动 cleanup
+- **后续**：增加 rotation / retention 策略
+  - 方案 A：按天数（`--max-age-days`，默认 7 天）
+  - 方案 B：按文件大小（`--max-size-mb`，超过则 rotate）
+  - 方案 C：logrotate 配合外部工具
+- 不要假装这个问题不存在
