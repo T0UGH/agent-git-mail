@@ -8,8 +8,8 @@ import { execFileSync } from 'child_process';
 import { AgmActivator, ActivationInput, ActivationResult } from './types.js';
 
 export interface FeishuActivatorConfig {
-  openId: string;
-  messageTemplate: string;
+  open_id: string;
+  message_template: string;
 }
 
 /** Render template with {{filename}}, {{from}}, {{subject}} placeholders */
@@ -27,13 +27,13 @@ export function createFeishuOpenclawAgent(
     name: 'feishu-openclaw-agent',
 
     async activate(input: ActivationInput): Promise<ActivationResult> {
-      const message = renderTemplate(config.messageTemplate, input);
+      const message = renderTemplate(config.message_template, input);
 
       try {
         execFileSync('openclaw', [
           'agent',
           '--channel', 'feishu',
-          '-t', config.openId,
+          '-t', config.open_id,
           '-m', message,
           '--deliver',
         ], {

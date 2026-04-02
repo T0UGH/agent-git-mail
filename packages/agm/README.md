@@ -82,7 +82,6 @@ What the installer does:
 Optional environment variables:
 
 - `AGM_CONFIG_PATH=/custom/path/config.yaml`
-- `AGM_ACTIVATION_POLL_INTERVAL=5` (activation poll interval in seconds)
 
 ### Manual bootstrap
 
@@ -129,7 +128,6 @@ runtime:
 activation:
   enabled: true
   activator: feishu-openclaw-agent
-  poll_interval_seconds: 5
   dedupe_mode: filename
   feishu:
     open_id: ou_xxxxxxxxxxxxxxxxxxxxxxxxxx
@@ -145,7 +143,6 @@ activation:
 |-------|---------|-------------|
 | `enabled` | `false` | Enable external activation |
 | `activator` | `feishu-openclaw-agent` | Activator backend |
-| `poll_interval_seconds` | `5` | How often daemon checks for new mail to activate |
 | `dedupe_mode` | `filename` | Deduplication key (`filename`) |
 | `feishu.open_id` | — | Feishu open_id of the recipient agent's user |
 | `feishu.message_template` | auto | Message template; `{{filename}}`, `{{from}}`, `{{subject}}` are substituted |

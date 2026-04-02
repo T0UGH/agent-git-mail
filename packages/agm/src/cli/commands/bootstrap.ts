@@ -17,7 +17,6 @@ export interface BootstrapOptions {
   selfLocalRepoPath: string;
   configPath?: string;
   activationOpenId?: string;
-  activationPollIntervalSeconds?: number;
   dryRun?: boolean;
   json?: boolean;
 }
@@ -192,7 +191,6 @@ function buildConfigYaml(
   selfRemoteUrl: string,
   selfLocalPath: string,
   activationOpenId?: string,
-  activationPollIntervalSeconds?: number,
 ): string {
   const config: ConfigV2 = {
     self: {
@@ -214,7 +212,6 @@ function buildConfigYaml(
     (config as any).activation = {
       enabled: true,
       activator: 'feishu-openclaw-agent',
-      poll_interval_seconds: activationPollIntervalSeconds ?? 5,
       dedupe_mode: 'filename',
       feishu: {
         open_id: activationOpenId,
@@ -247,7 +244,7 @@ function outputText(result: CheckResult & { details?: Record<string, unknown> })
 }
 
 export async function cmdBootstrap(argv: BootstrapOptions): Promise<void> {
-  const { selfId, selfRemoteRepoUrl, selfLocalRepoPath, configPath, activationOpenId, activationPollIntervalSeconds, dryRun, json } = argv;
+  const { selfId, selfRemoteRepoUrl, selfLocalRepoPath, configPath, activationOpenId, dryRun, json } = argv;
 
   const targetConfigPath = configPath ?? getConfigPath();
 
@@ -299,7 +296,7 @@ export async function cmdBootstrap(argv: BootstrapOptions): Promise<void> {
 
   // 3. Dry-run (check early to avoid side effects)
   if (dryRun) {
-    const configYaml = buildConfigYaml(selfId, selfRemoteRepoUrl, selfLocalRepoPath, activationOpenId, activationPollIntervalSeconds);
+    const configYaml = buildConfigYaml(selfId, selfRemoteRepoUrl, selfLocalRepoPath, activationOpenId);
     // Determine what clone would do without actually cloning
     let cloneAction: string;
     if (!existsSync(selfLocalRepoPath)) {
@@ -324,7 +321,7 @@ export async function cmdBootstrap(argv: BootstrapOptions): Promise<void> {
         selfRemoteUrl: selfRemoteRepoUrl,
         selfLocalRepoPath,
         activation: activationOpenId
-          ? { open_id: activationOpenId, poll_interval_seconds: activationPollIntervalSeconds ?? 5 }
+          ? { open_id: activationOpenId }
           : null,
         configContent: configYaml,
       },
@@ -338,7 +335,7 @@ export async function cmdBootstrap(argv: BootstrapOptions): Promise<void> {
       console.log(`   Remote URL: ${selfRemoteRepoUrl}`);
       console.log(`   Local path: ${selfLocalRepoPath}`);
       if (activationOpenId) {
-        console.log(`   Activation: enabled (open_id=${activationOpenId}, poll=${activationPollIntervalSeconds ?? 5}s)`);
+        console.log(`   Activation: enabled (open_id=${activationOpenId})`);
       } else {
         console.log(`   Activation: not configured (add --activation-open-id)`);
       }
@@ -366,7 +363,7 @@ export async function cmdBootstrap(argv: BootstrapOptions): Promise<void> {
 
   // 6. Write config
   mkdirSync(dirname(targetConfigPath), { recursive: true });
-  const configYaml = buildConfigYaml(selfId, selfRemoteRepoUrl, selfLocalRepoPath, activationOpenId, activationPollIntervalSeconds);
+  const configYaml = buildConfigYaml(selfId, selfRemoteRepoUrl, selfLocalRepoPath, activationOpenId);
   writeFileSync(targetConfigPath, configYaml, 'utf-8');
 
   const result: CheckResult & { configPath: string; selfId: string; selfRemoteUrl: string; selfLocalRepoPath: string } = {

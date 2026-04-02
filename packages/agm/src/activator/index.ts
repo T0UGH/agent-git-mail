@@ -11,7 +11,6 @@ import { isConfigV2 } from '../config/schema.js';
 export interface ActivationConfig {
   enabled: boolean;
   activator: 'feishu-openclaw-agent';
-  poll_interval_seconds: number;
   dedupe_mode: 'filename';
   feishu: FeishuActivatorConfig;
 }

@@ -160,7 +160,6 @@ Bootstrap options:
   --self-local-repo-path <path>        Required. Local path where the repo will be cloned / already exists.
   --config-path <path>                 Optional. Custom config path.
   --activation-open-id <openId>       Optional. Feishu open_id for external activation.
-  --activation-poll-interval-seconds <n>  Optional. Activation poll interval (default 5).
   --dry-run                           Optional. Print what would be done without writing.
   --json                              Optional. Output machine-readable JSON.
 
@@ -168,7 +167,7 @@ Examples:
   agm config show
   agm bootstrap --self-id atlas --self-remote-repo-url https://github.com/T0UGH/test-mailbox-a.git --self-local-repo-path /workspace/mailbox/atlas
   agm bootstrap --self-id boron --self-remote-repo-url https://github.com/T0UGH/test-mailbox-b.git --self-local-repo-path /workspace/mailbox/boron --dry-run
-  agm bootstrap --self-id atlas --self-remote-repo-url https://github.com/T0UGH/test-mailbox-a.git --self-local-repo-path /workspace/mailbox/atlas --activation-open-id ou_xxx --activation-poll-interval-seconds 5
+  agm bootstrap --self-id atlas --self-remote-repo-url https://github.com/T0UGH/test-mailbox-a.git --self-local-repo-path /workspace/mailbox/atlas --activation-open-id ou_xxx
 `);
 }
 

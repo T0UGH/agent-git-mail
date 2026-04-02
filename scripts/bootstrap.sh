@@ -10,7 +10,6 @@
 #
 # Optional env vars:
 #   AGM_CONFIG_PATH=/custom/path/config.yaml        Custom config path
-#   AGM_ACTIVATION_POLL_INTERVAL=5                  Activation poll interval (seconds)
 
 set -euo pipefail
 
@@ -20,7 +19,6 @@ SELF_REMOTE_REPO_URL="${AGM_SELF_REMOTE_REPO_URL:-}"
 SELF_LOCAL_REPO_PATH="${AGM_SELF_LOCAL_REPO_PATH:-}"
 AGM_CONFIG_PATH="${AGM_CONFIG_PATH:-}"
 AGM_ACTIVATION_OPEN_ID="${AGM_ACTIVATION_OPEN_ID:-}"
-AGM_ACTIVATION_POLL_INTERVAL="${AGM_ACTIVATION_POLL_INTERVAL:-}"
 OPENCLAW_SKILLS_DIR="${OPENCLAW_SKILLS_DIR:-$HOME/.openclaw/workspace/skills}"
 
 # --- Validation ---
@@ -134,9 +132,6 @@ if [[ -n "$AGM_CONFIG_PATH" ]]; then
 fi
 if [[ -n "$AGM_ACTIVATION_OPEN_ID" ]]; then
   BUILD_ARGS+=(--activation-open-id "$AGM_ACTIVATION_OPEN_ID")
-fi
-if [[ -n "$AGM_ACTIVATION_POLL_INTERVAL" ]]; then
-  BUILD_ARGS+=(--activation-poll-interval-seconds "$AGM_ACTIVATION_POLL_INTERVAL")
 fi
 
 if ! agm bootstrap "${BUILD_ARGS[@]}"; then

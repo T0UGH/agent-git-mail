@@ -31,7 +31,6 @@ export const FeishuActivatorConfigSchema = z.object({
 export const ActivationConfigSchema = z.object({
   enabled: z.boolean().optional().default(false),
   activator: z.enum(['feishu-openclaw-agent']).optional().default('feishu-openclaw-agent'),
-  poll_interval_seconds: z.number().optional().default(5),
   dedupe_mode: z.literal('filename').optional().default('filename'),
   feishu: FeishuActivatorConfigSchema,
 });
