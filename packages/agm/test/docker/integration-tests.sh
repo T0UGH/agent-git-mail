@@ -163,6 +163,7 @@ activation:
   dedupe_mode: filename
   feishu:
     open_id: ou_fail_agent
+    message_template: "AGM: {{filename}}"
 YAML
 
 # fake-openclaw returns failure when OPENCLAW_FAIL=1
