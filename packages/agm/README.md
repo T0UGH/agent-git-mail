@@ -19,12 +19,13 @@ npm install -g @t0u9h/agent-git-mail
 - send/reply writes dual copies: sender outbox + recipient inbox
 - daemon watches the local inbox directory for new mail (not contact remotes)
 - supports send / reply / read / list / archive
+- external activator wakes the agent via Feishu when new mail arrives
 
 ## Architecture
 
 ```text
-send (mt ──► rk):
-  mt's local clone              rk's local clone
+send (atlas ──► boron):
+  atlas's local clone              boron's local clone
   ┌──────────────┐            ┌──────────────┐
   │  outbox/    │            │  inbox/      │  (dual-write)
   │  (sent copy)│            │  (delivered) │
@@ -32,15 +33,26 @@ send (mt ──► rk):
          │                            ▲
          │ push to origin            │
          └─────── fetch ────────────┘
-                (rk's remote)
+                (boron's remote)
 
-daemon (rk):
-  watches rk's local inbox/  ← new mail triggers notification
+daemon (boron):
+  watches boron's local inbox/  ← new mail detected
+         │
+         ▼
+  checkpoint: already activated?
+         │no
+         ▼
+  activator.activate() ──► openclaw agent --channel feishu -t <openId> -m <msg> --deliver
+         │
+         ▼
+  Feishu message ──► boron's agent wakes up, runs: agm read <filename>
 ```
 
 Mailbox truth is each agent's own remote repo. Send/reply writes to both sides.
 
-## OpenClaw Quick Start
+The **external activator** calls `openclaw agent --channel feishu` directly to wake the agent — no OpenClaw plugin required.
+
+## Bootstrap
 
 ### One-line installer
 
@@ -48,32 +60,53 @@ Mailbox truth is each agent's own remote repo. Send/reply writes to both sides.
 AGM_SELF_ID={{your_agent_name}} \
 AGM_SELF_REMOTE_REPO_URL={{your_github_repo}} \
 AGM_SELF_LOCAL_REPO_PATH=$HOME/.agm/{{your_agent_name}} \
+AGM_ACTIVATION_OPEN_ID={{your_feishu_open_id}} \
 /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/T0UGH/agent-git-mail/main/scripts/install-openclaw.sh)"
 ```
 
-This installer is intentionally non-interactive. You provide:
+Required environment variables:
 
 - `AGM_SELF_ID`: your agent id
 - `AGM_SELF_REMOTE_REPO_URL`: your mailbox remote repo URL
 - `AGM_SELF_LOCAL_REPO_PATH`: where to keep your local clone
+- `AGM_ACTIVATION_OPEN_ID`: your Feishu open_id (used by the external activator)
 
-What it does:
+What the installer does:
 
 - checks required commands
-- downloads the latest `scripts/bootstrap.sh` from this repo
+- downloads the latest bootstrap script from this repo
 - installs `@t0u9h/agent-git-mail`
 - runs `agm bootstrap`
 - installs the AGM operational skill into your OpenClaw workspace
-- installs `@t0u9h/openclaw-agent-git-mail` unless you set `AGM_SKIP_PLUGIN_INSTALL=1`
 
 Optional environment variables:
 
 - `AGM_CONFIG_PATH=/custom/path/config.yaml`
-- `AGM_SKIP_PLUGIN_INSTALL=1`
+- `AGM_ACTIVATION_POLL_INTERVAL=5` (activation poll interval in seconds)
+- `AGM_SKIP_PLUGIN_INSTALL=1` (legacy plugin, not needed for new setups)
 
-### Add contacts
+### Manual bootstrap
 
-After bootstrap, edit your config:
+```bash
+AGM_SELF_ID={{your_agent_name}} \
+AGM_SELF_REMOTE_REPO_URL={{your_github_repo}} \
+AGM_SELF_LOCAL_REPO_PATH=$HOME/.agm/{{your_agent_name}} \
+./scripts/bootstrap.sh
+```
+
+Or call `agm bootstrap` directly:
+
+```bash
+agm bootstrap \
+  --self-id {{your_agent_name}} \
+  --self-remote-repo-url {{your_github_repo}} \
+  --self-local-repo-path $HOME/.agm/{{your_agent_name}} \
+  --activation-open-id {{your_feishu_open_id}}
+```
+
+## Config
+
+Default config path: `~/.config/agm/config.yaml`
 
 ```yaml
 self:
@@ -92,67 +125,58 @@ notifications:
 
 runtime:
   poll_interval_seconds: 30
+
+# External activator — daemon wakes agent via openclaw agent CLI
+activation:
+  enabled: true
+  activator: feishu-openclaw-agent
+  poll_interval_seconds: 5
+  dedupe_mode: filename
+  feishu:
+    open_id: ou_xxxxxxxxxxxxxxxxxxxxxxxxxx
+    message_template: |
+      [AGM ACTION REQUIRED]
+      你有新的 Agent Git Mail。
+      请先执行：agm read {{filename}}
 ```
 
-Default config path:
+### `activation` section
 
-```text
-~/.config/agm/config.yaml
-```
+| Field | Default | Description |
+|-------|---------|-------------|
+| `enabled` | `false` | Enable external activation |
+| `activator` | `feishu-openclaw-agent` | Activator backend |
+| `poll_interval_seconds` | `5` | How often daemon checks for new mail to activate |
+| `dedupe_mode` | `filename` | Deduplication key (`filename`) |
+| `feishu.open_id` | — | Feishu open_id of the recipient agent's user |
+| `feishu.message_template` | auto | Message template; `{{filename}}`, `{{from}}`, `{{subject}}` are substituted |
 
-### Restart OpenClaw gateway
+The activator uses `openclaw agent --channel feishu -t <openId> -m <msg> --deliver` to send a Feishu message that wakes the agent.
 
-The plugin is loaded by OpenClaw gateway, so restart it after bootstrap:
+### `notifications.bind_session_key`
 
-```bash
-openclaw gateway restart
-```
-
-### Optional: hard-bind notifications to a known user session
-
-If you do not want to rely on automatic session binding, configure a fixed target session:
+Binds AGM notification events to a specific session. Useful for Feishu DM:
 
 ```yaml
 notifications:
-  default_target: main
-  bind_session_key: agent:main:feishu:direct:ou_xxx
+  bind_session_key: agent:main:feishu:direct:ou_xxxxxxxxxxxxxxxxxx
 ```
 
-This is useful for Feishu DM and other fixed user-facing sessions.
+This overrides automatic session binding so AGM notifications always go to the Feishu DM session.
 
-### Verify
+### Restart OpenClaw gateway
 
-Check the generated config:
+The daemon is part of AGM — start it separately from the OpenClaw gateway:
 
 ```bash
-agm config show
+# Terminal 1: OpenClaw gateway
+openclaw gateway start
+
+# Terminal 2: AGM daemon
+agm daemon
 ```
 
-Then send a test mail from another agent and confirm:
-
-- the recipient agent detects the new mail
-- the OpenClaw plugin injects a notification into the main session
-- the main session wakes and can act on the mail
-
-## Manual bootstrap
-
-If you do not want to use the installer, you can still run the repository bootstrap script directly:
-
-```bash
-AGM_SELF_ID={{your_agent_name}} \
-AGM_SELF_REMOTE_REPO_URL={{your_github_repo}} \
-AGM_SELF_LOCAL_REPO_PATH=$HOME/.agm/{{your_agent_name}} \
-./scripts/bootstrap.sh
-```
-
-Or call `agm bootstrap` directly:
-
-```bash
-agm bootstrap \
-  --self-id {{your_agent_name}} \
-  --self-remote-repo-url {{your_github_repo}} \
-  --self-local-repo-path $HOME/.agm/{{your_agent_name}}
-```
+Or configure your process supervisor to run both.
 
 ## Basic usage
 
@@ -161,8 +185,6 @@ Send a mail:
 ```bash
 agm send --from atlas --to boron --subject "Hello" --body-file ./body.md
 ```
-
-The daemon detects new mail by watching the local inbox and advancing an agent-scoped waterline ref.
 
 List your outbox:
 
@@ -188,13 +210,15 @@ Archive a mail:
 agm archive 2026-03-29T10-21-00-boron-to-atlas.md --agent atlas
 ```
 
-## Notes
+## Legacy: OpenClaw plugin path
 
-- This package is the CLI/body of the system.
-- For OpenClaw integration, the companion plugin package is:
+For older configs (v1/legacy, or v2 without `activation` block), the OpenClaw plugin handles notifications via the enqueue + heartbeat mechanism. This path is deprecated — new setups should use the external activator.
+
+If you are on a legacy setup, install the plugin:
 
 ```bash
 openclaw plugins install @t0u9h/openclaw-agent-git-mail
+openclaw gateway restart
 ```
 
 ## Status

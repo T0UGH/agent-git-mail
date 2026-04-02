@@ -21,6 +21,21 @@ export const RuntimeConfigSchema = z.object({
   poll_interval_seconds: z.number().optional().default(30),
 });
 
+export const FeishuActivatorConfigSchema = z.object({
+  open_id: z.string().min(1),
+  message_template: z.string().optional().default(
+    '[AGM ACTION REQUIRED]\n你有新的 Agent Git Mail。\n请先执行：agm read {{filename}}'
+  ),
+});
+
+export const ActivationConfigSchema = z.object({
+  enabled: z.boolean().optional().default(false),
+  activator: z.enum(['feishu-openclaw-agent']).optional().default('feishu-openclaw-agent'),
+  poll_interval_seconds: z.number().optional().default(5),
+  dedupe_mode: z.literal('filename').optional().default('filename'),
+  feishu: FeishuActivatorConfigSchema,
+});
+
 export const ContactConfigSchema = z.object({
   repo_path: z.string().optional(),
   remote_repo_url: z.string().min(1),
@@ -33,6 +48,7 @@ export const ConfigSchemaV2 = z.object({
   contacts: ContactsConfigSchema.optional().default({}),
   notifications: NotificationsConfigSchema.optional().default({}),
   runtime: RuntimeConfigSchema.optional().default({}),
+  activation: ActivationConfigSchema.optional(),
 });
 
 // --- Legacy v1 (self + plain path contacts) ---
@@ -72,6 +88,8 @@ export type LegacyConfigV0 = z.infer<typeof LegacyConfigSchemaV0>;
 export type SelfConfig = z.infer<typeof SelfConfigSchema>;
 export type NotificationsConfig = z.infer<typeof NotificationsConfigSchema>;
 export type RuntimeConfig = z.infer<typeof RuntimeConfigSchema>;
+export type ActivationConfig = z.infer<typeof ActivationConfigSchema>;
+export type FeishuActivatorConfig = z.infer<typeof FeishuActivatorConfigSchema>;
 export type ContactConfig = z.infer<typeof ContactConfigSchema>;
 export type ContactsConfig = z.infer<typeof ContactsConfigSchema>;
 

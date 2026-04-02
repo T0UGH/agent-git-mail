@@ -1,15 +1,17 @@
 #!/usr/bin/env bash
-# AGM Bootstrap — install AGM + OpenClaw plugin and initialize the agent
+# AGM Bootstrap — install AGM and initialize the agent
 #
 # Usage:
 #   AGM_SELF_ID=atlas \
 #   AGM_SELF_REMOTE_REPO_URL=https://github.com/USER/atlas-mailbox.git \
 #   AGM_SELF_LOCAL_REPO_PATH=/path/to/atlas-mailbox \
+#   AGM_ACTIVATION_OPEN_ID=ou_xxx \
 #   ./scripts/bootstrap.sh
 #
 # Optional env vars:
-#   AGM_CONFIG_PATH=/custom/path/config.yaml   Custom config path
-#   AGM_SKIP_PLUGIN_INSTALL=1                  Skip plugin installation
+#   AGM_CONFIG_PATH=/custom/path/config.yaml        Custom config path
+#   AGM_ACTIVATION_POLL_INTERVAL=5                  Activation poll interval (seconds)
+#   AGM_SKIP_PLUGIN_INSTALL=1                       Skip legacy plugin install
 
 set -euo pipefail
 
@@ -19,6 +21,8 @@ SELF_REMOTE_REPO_URL="${AGM_SELF_REMOTE_REPO_URL:-}"
 SELF_LOCAL_REPO_PATH="${AGM_SELF_LOCAL_REPO_PATH:-}"
 AGM_CONFIG_PATH="${AGM_CONFIG_PATH:-}"
 AGM_SKIP_PLUGIN_INSTALL="${AGM_SKIP_PLUGIN_INSTALL:-}"
+AGM_ACTIVATION_OPEN_ID="${AGM_ACTIVATION_OPEN_ID:-}"
+AGM_ACTIVATION_POLL_INTERVAL="${AGM_ACTIVATION_POLL_INTERVAL:-}"
 OPENCLAW_SKILLS_DIR="${OPENCLAW_SKILLS_DIR:-$HOME/.openclaw/workspace/skills}"
 
 # --- Validation ---
@@ -125,13 +129,17 @@ BUILD_ARGS=(
   --self-id "$SELF_ID"
   --self-remote-repo-url "$SELF_REMOTE_REPO_URL"
   --self-local-repo-path "$SELF_LOCAL_REPO_PATH"
+  --skip-plugin-install
 )
 
 if [[ -n "$AGM_CONFIG_PATH" ]]; then
   BUILD_ARGS+=(--config-path "$AGM_CONFIG_PATH")
 fi
-if [[ "$AGM_SKIP_PLUGIN_INSTALL" == "1" ]]; then
-  BUILD_ARGS+=(--skip-plugin-install)
+if [[ -n "$AGM_ACTIVATION_OPEN_ID" ]]; then
+  BUILD_ARGS+=(--activation-open-id "$AGM_ACTIVATION_OPEN_ID")
+fi
+if [[ -n "$AGM_ACTIVATION_POLL_INTERVAL" ]]; then
+  BUILD_ARGS+=(--activation-poll-interval-seconds "$AGM_ACTIVATION_POLL_INTERVAL")
 fi
 
 if ! agm bootstrap "${BUILD_ARGS[@]}"; then
@@ -150,6 +158,12 @@ echo "=== Bootstrap complete ==="
 echo ""
 echo "Next steps:"
 echo "  1. Add contacts to your AGM config: agm config show"
-echo "  2. Restart your OpenClaw gateway to load the plugin"
+if [[ -n "$AGM_ACTIVATION_OPEN_ID" ]]; then
+  echo "  2. Start the daemon: agm daemon"
+  echo "     The daemon will wake your agent via Feishu when new mail arrives."
+else
+  echo "  2. Add 'activation' section to your config to enable Feishu wake-up"
+  echo "     Then start the daemon: agm daemon"
+fi
 echo "  3. Verify the config: agm config show"
-echo "  4. Send a test mail from another agent and confirm the plugin wakes your main session"
+echo "  4. Send a test mail from another agent and confirm the agent receives a Feishu message"

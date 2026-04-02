@@ -15,7 +15,8 @@
     "./git/repo.js": "./dist/git/repo.js",
     "./git/waterline.js": "./dist/git/waterline.js",
     "./domain/frontmatter.js": "./dist/domain/frontmatter.js",
-    "./app/remote-mail-discovery.js": "./dist/app/remote-mail-discovery.js"
+    "./app/remote-mail-discovery.js": "./dist/app/remote-mail-discovery.js",
+    "./activator": "./dist/activator/index.js"
   },
   "files": [
     "dist",

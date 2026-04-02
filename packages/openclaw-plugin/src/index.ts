@@ -158,8 +158,40 @@ async function pollOnce(logger: { info(msg: string): void; error(msg: string): v
       `[agm] stage=v2_discovery id=${selfId} source=${routeSource} sessionKey=${sessionKey}`,
     );
 
+    // Try to create activator from config (v2 only)
+    let activator: ReturnType<typeof import('@t0u9h/agent-git-mail/activator').createActivator> | null = null;
+    try {
+      const agmActivator = await import('@t0u9h/agent-git-mail/activator');
+      activator = agmActivator.createActivator(config);
+    } catch {
+      // activator module not available
+    }
+
     try {
       await watchAgentOnce(selfId, selfRepoPath, logger, async (mail) => {
+        if (activator) {
+          // New activator path: use external activator + checkpoint
+          const { hasActivated, markActivated } = await import('@t0u9h/agent-git-mail/activator');
+          if (hasActivated(mail.filename)) {
+            logger.info(`[agm] stage=activation_skipped file=${mail.filename} reason=already_activated`);
+            return;
+          }
+          const result = await activator.activate({
+            selfId,
+            filename: mail.filename,
+            from: mail.from,
+            message: `[AGM ACTION REQUIRED]\n你有新的 Agent Git Mail。\n请先执行：agm read ${mail.filename}`,
+          });
+          if (result.ok) {
+            markActivated(mail.filename);
+            logger.info(`[agm] stage=activation_sent file=${mail.filename} via=${activator.name}`);
+          } else {
+            logger.error(`[agm] stage=activation_failed file=${mail.filename} error=${result.error}`);
+          }
+          return;
+        }
+
+        // Legacy path: enqueue system event + heartbeat
         const text = buildAgmNotificationText(mail);
         logger.info(
           `[agm] stage=deliver_prepare agent=${selfId} sessionKey=${sessionKey} file=${mail.filename} from=${mail.from}`,

@@ -52,6 +52,10 @@ const subcommands: Record<string, (argv: Record<string, unknown>) => Promise<voi
       selfLocalRepoPath: String(argv['selfLocalRepoPath'] ?? ''),
       configPath: argv['configPath'] ? String(argv['configPath']) : undefined,
       skipPluginInstall: argv['skipPluginInstall'] === true,
+      activationOpenId: argv['activationOpenId'] ? String(argv['activationOpenId']) : undefined,
+      activationPollIntervalSeconds: argv['activationPollIntervalSeconds']
+        ? Number(argv['activationPollIntervalSeconds'])
+        : undefined,
       dryRun: argv['dryRun'] === true,
       json: argv['json'] === true,
     };
@@ -156,7 +160,9 @@ Bootstrap options:
   --self-remote-repo-url <url>        Required. Remote git repo URL (e.g. https://github.com/USER/mailbox.git).
   --self-local-repo-path <path>        Required. Local path where the repo will be cloned / already exists.
   --config-path <path>                 Optional. Custom config path.
-  --skip-plugin-install                Optional. Skip plugin installation.
+  --skip-plugin-install                Optional. Skip plugin installation (legacy, plugin is now optional).
+  --activation-open-id <openId>       Optional. Feishu open_id for external activation (activator path).
+  --activation-poll-interval-seconds <n>  Optional. Activation poll interval (default 5).
   --dry-run                           Optional. Print what would be done without writing.
   --json                              Optional. Output machine-readable JSON.
 
@@ -164,7 +170,7 @@ Examples:
   agm config show
   agm bootstrap --self-id atlas --self-remote-repo-url https://github.com/T0UGH/test-mailbox-a.git --self-local-repo-path /workspace/mailbox/atlas
   agm bootstrap --self-id boron --self-remote-repo-url https://github.com/T0UGH/test-mailbox-b.git --self-local-repo-path /workspace/mailbox/boron --dry-run
-  agm bootstrap --self-id atlas --self-remote-repo-url https://github.com/T0UGH/test-mailbox-a.git --self-local-repo-path /workspace/mailbox/atlas --json
+  agm bootstrap --self-id atlas --self-remote-repo-url https://github.com/T0UGH/test-mailbox-a.git --self-local-repo-path /workspace/mailbox/atlas --activation-open-id ou_xxx --activation-poll-interval-seconds 5
 `);
 }
 
