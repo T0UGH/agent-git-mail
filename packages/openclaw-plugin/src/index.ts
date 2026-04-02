@@ -9,6 +9,10 @@ const sessionBindings = new SessionBindingStore();
 
 let pluginRuntime: OpenClawPluginApi['runtime'] | null = null;
 
+export function buildAgmNotificationText(mail: { from: string; filename: string }): string {
+  return `[AGM ACTION REQUIRED]\nNew mail delivered to your inbox.\nfrom=${mail.from}\nfile=${mail.filename}\n\nUse AGM commands, not generic chat reply.\nNext step: agm read ${mail.filename}\nThen decide whether to agm reply or agm archive.`;
+}
+
 export function resolveRouteTarget(opts: {
   forcedSessionKey: string | null;
   boundSessionKey: string | undefined;
@@ -156,7 +160,7 @@ async function pollOnce(logger: { info(msg: string): void; error(msg: string): v
 
     try {
       await watchAgentOnce(selfId, selfRepoPath, logger, async (mail) => {
-        const text = `New agent git mail: from=${mail.from}, file=${mail.filename}`;
+        const text = buildAgmNotificationText(mail);
         logger.info(
           `[agm] stage=deliver_prepare agent=${selfId} sessionKey=${sessionKey} file=${mail.filename} from=${mail.from}`,
         );
@@ -208,7 +212,7 @@ async function pollOnce(logger: { info(msg: string): void; error(msg: string): v
 
     try {
       await watchAgentOnce(name, repoPath, logger, async (mail) => {
-        const text = `New agent git mail: from=${mail.from}, file=${mail.filename}`;
+        const text = buildAgmNotificationText(mail);
         logger.info(
           `[agm] stage=deliver_prepare agent=${name} sessionKey=${sessionKey} file=${mail.filename} from=${mail.from}`,
         );

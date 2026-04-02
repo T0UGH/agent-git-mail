@@ -105,6 +105,7 @@ notifications:
 - agent repo 中出现一封新信
 - daemon 检测到它
 - plugin 将它转成目标主会话提醒
+- AGM skill 让 agent 明确先走 `agm read`，再决定 `agm reply` / `agm archive`
 - agent 在自己的长期会话里处理它
 
 ### 手动安装（可选）

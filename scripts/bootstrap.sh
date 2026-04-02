@@ -19,6 +19,7 @@ SELF_REMOTE_REPO_URL="${AGM_SELF_REMOTE_REPO_URL:-}"
 SELF_LOCAL_REPO_PATH="${AGM_SELF_LOCAL_REPO_PATH:-}"
 AGM_CONFIG_PATH="${AGM_CONFIG_PATH:-}"
 AGM_SKIP_PLUGIN_INSTALL="${AGM_SKIP_PLUGIN_INSTALL:-}"
+OPENCLAW_SKILLS_DIR="${OPENCLAW_SKILLS_DIR:-$HOME/.openclaw/workspace/skills}"
 
 # --- Validation ---
 require_env() {
@@ -41,6 +42,60 @@ check_dep() {
     exit 3
   fi
   echo "✅ $1: $(command -v "$1") ($(eval "$1 --version 2>/dev/null | head -1 || echo 'found')")"
+}
+
+install_agm_skill() {
+  local skill_dir="$OPENCLAW_SKILLS_DIR/agm-mail"
+  mkdir -p "$skill_dir"
+  cat > "$skill_dir/SKILL.md" <<'EOF'
+---
+name: agm-mail
+description: Handle Agent Git Mail notifications by following the mailbox workflow: read first, then reply or archive. Trigger when an AGM system message announces a newly delivered mail file.
+---
+
+# AGM Mail
+
+When you receive an AGM notification, treat it as mailbox work — **not** as a normal chat message.
+
+## Required flow
+
+1. **Read the mail first**
+
+```bash
+agm read <filename>
+```
+
+Do not reply in chat before reading the mail.
+
+2. **Decide what to do next**
+
+- If a reply is needed, use AGM reply:
+
+```bash
+agm reply <filename> --from <self_id> --body-file <path>
+```
+
+- If the mail is handled and no reply is needed, archive it:
+
+```bash
+agm archive <filename> --agent <self_id>
+```
+
+## Default discipline
+
+- AGM notification → `agm read` first
+- Use AGM commands for mailbox actions
+- Do not replace the mail workflow with a generic chat reply
+
+## Example
+
+```bash
+agm read 2026-04-02T01-57-23Z-mt-to-leo-ff97.md
+agm reply 2026-04-02T01-57-23Z-mt-to-leo-ff97.md --from leo --body-file ./reply.md
+agm archive 2026-04-02T01-57-23Z-mt-to-leo-ff97.md --agent leo
+```
+EOF
+  echo "✅ AGM skill installed: $skill_dir/SKILL.md"
 }
 
 echo "=== Checking system dependencies ==="
@@ -84,6 +139,11 @@ if ! agm bootstrap "${BUILD_ARGS[@]}"; then
   echo "❌ agm bootstrap failed (exit $code)" >&2
   exit "$code"
 fi
+
+# --- Step 4: Install AGM skill ---
+echo ""
+echo "=== Installing AGM skill ==="
+install_agm_skill
 
 echo ""
 echo "=== Bootstrap complete ==="

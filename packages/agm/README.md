@@ -63,6 +63,7 @@ What it does:
 - downloads the latest `scripts/bootstrap.sh` from this repo
 - installs `@t0u9h/agent-git-mail`
 - runs `agm bootstrap`
+- installs the AGM operational skill into your OpenClaw workspace
 - installs `@t0u9h/openclaw-agent-git-mail` unless you set `AGM_SKIP_PLUGIN_INSTALL=1`
 
 Optional environment variables:

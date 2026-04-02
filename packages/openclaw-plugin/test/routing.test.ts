@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { resolveRouteTarget } from '../src/index.js';
+import { buildAgmNotificationText, resolveRouteTarget } from '../src/index.js';
 
 describe('resolveRouteTarget', () => {
   it('uses forced session key when configured', () => {
@@ -36,5 +36,20 @@ describe('resolveRouteTarget', () => {
       sessionKey: 'agent:bound:def',
       routeSource: 'binding',
     });
+  });
+
+  it('builds a strong AGM action-oriented notification', () => {
+    const text = buildAgmNotificationText({
+      from: 'mt',
+      filename: '2026-04-02T01-57-23Z-mt-to-leo-ff97.md',
+    });
+
+    expect(text).toContain('[AGM ACTION REQUIRED]');
+    expect(text).toContain('from=mt');
+    expect(text).toContain('file=2026-04-02T01-57-23Z-mt-to-leo-ff97.md');
+    expect(text).toContain('Use AGM commands, not generic chat reply.');
+    expect(text).toContain('agm read 2026-04-02T01-57-23Z-mt-to-leo-ff97.md');
+    expect(text).toContain('agm reply');
+    expect(text).toContain('agm archive');
   });
 });

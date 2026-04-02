@@ -30,7 +30,8 @@ openclaw plugins install -l ./packages/openclaw-plugin
 
 - runs as an OpenClaw plugin/service
 - watches agent repos for new inbox mails
-- converts new mail events into OpenClaw session notifications
+- converts new mail events into strong AGM action-oriented OpenClaw session notifications
+- installs an AGM operational skill during bootstrap/install flow
 - is intended to work with assistant-style agents that maintain long-lived context
 
 ## Current status
