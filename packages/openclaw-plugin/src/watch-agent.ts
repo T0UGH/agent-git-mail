@@ -26,7 +26,7 @@ export async function watchAgentOnce(
     return;
   }
 
-  const waterline = new GitWaterline(repo);
+  const waterline = new GitWaterline(repo, `refs/agm/last-seen/${agentName}`);
 
   // Pull latest
   try {

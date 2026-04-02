@@ -44,6 +44,17 @@ describe('git waterline', () => {
     expect(read).toBe(sha2);
   });
 
+  it('supports agent-scoped waterline refs', async () => {
+    const sha = await repo.getHeadSha();
+    const leo = new GitWaterline(repo, 'refs/agm/last-seen/leo');
+    const rk = new GitWaterline(repo, 'refs/agm/last-seen/rk');
+
+    await leo.write(sha);
+
+    expect(await leo.read()).toBe(sha);
+    expect(await rk.read()).toBeNull();
+  });
+
   afterAll(() => {
     rmSync(tmp, { recursive: true, force: true });
   });
