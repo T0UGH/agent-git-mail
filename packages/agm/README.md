@@ -52,6 +52,8 @@ Mailbox truth is each agent's own remote repo. Send/reply writes to both sides.
 
 The **external activator** calls `openclaw agent --channel feishu` directly to wake the agent — no OpenClaw plugin required.
 
+AGM also ships an operational OpenClaw skill, `agm-mail`, so the agent has an explicit mailbox workflow (`read → reply/archive`) instead of improvising from generic chat behavior.
+
 ## Bootstrap
 
 ### One-line installer
@@ -77,7 +79,7 @@ What the installer does:
 - downloads the latest bootstrap script from this repo
 - installs `@t0u9h/agent-git-mail`
 - runs `agm bootstrap`
-- installs the AGM operational skill into your OpenClaw workspace
+- installs the repo-owned AGM operational skill into your OpenClaw workspace
 
 Optional environment variables:
 

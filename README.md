@@ -42,6 +42,7 @@ AGM_ACTIVATION_OPEN_ID={{your_feishu_open_id}} \
 - 安装 `@t0u9h/agent-git-mail`
 - 调用 `agm bootstrap`
 - clone 你的 mailbox repo 到本地目录
+- 安装 repo 内维护的 `agm-mail` skill 到 OpenClaw skills 目录
 
 这是一个**非交互式** installer。你需要显式提供：
 
@@ -126,13 +127,16 @@ agent-git-mail/
 ├─ docs/
 ├─ packages/
 │  └─ agm/          # CLI + daemon + external activator
+├─ skills/
+│  └─ agm-mail/     # OpenClaw operational skill for AGM mailbox workflows
 ├─ test/
 └─ scripts/
 ```
 
 - `packages/agm`：CLI / daemon / 协议 / git orchestration / external activator
+- `skills/agm-mail`：agent 侧 mailbox workflow skill（read / list / send / reply / archive）
 - `scripts/install-openclaw.sh`：curl-friendly 安装入口
-- `scripts/bootstrap.sh`：仓库内 bootstrap 脚本
+- `scripts/bootstrap.sh`：仓库内 bootstrap 脚本，负责安装 CLI + AGM skill
 
 ## 文档
 
