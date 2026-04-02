@@ -85,6 +85,10 @@ contacts:
     repo_path: /path/to/{{other_agent_name}}-mail  # local clone path (needed for dual-write)
     remote_repo_url: {{other_agent_github_repo}}
 
+notifications:
+  default_target: main
+  bind_session_key: null  # optional: hard-bind AGM notifications to a specific session
+
 runtime:
   poll_interval_seconds: 30
 ```
@@ -102,6 +106,18 @@ The plugin is loaded by OpenClaw gateway, so restart it after bootstrap:
 ```bash
 openclaw gateway restart
 ```
+
+### Optional: hard-bind notifications to a known user session
+
+If you do not want to rely on automatic session binding, configure a fixed target session:
+
+```yaml
+notifications:
+  default_target: main
+  bind_session_key: agent:main:feishu:direct:ou_xxx
+```
+
+This is useful for Feishu DM and other fixed user-facing sessions.
 
 ### Verify
 
@@ -145,7 +161,7 @@ Send a mail:
 agm send --from atlas --to boron --subject "Hello" --body-file ./body.md
 ```
 
-The daemon detects the new message by fetching the sender remote and diffing against the per-contact waterline.
+The daemon detects new mail by watching the local inbox and advancing an agent-scoped waterline ref.
 
 List your outbox:
 

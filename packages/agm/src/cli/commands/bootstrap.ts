@@ -197,6 +197,7 @@ function buildConfigYaml(selfId: string, selfRemoteUrl: string, selfLocalPath: s
     contacts: {},
     notifications: {
       default_target: 'main',
+      bind_session_key: null,
       forced_session_key: null,
     },
     runtime: {

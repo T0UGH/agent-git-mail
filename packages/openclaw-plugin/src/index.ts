@@ -145,7 +145,7 @@ async function pollOnce(logger: { info(msg: string): void; error(msg: string): v
     }
     logger.info(`[agm] stage=preflight_passed id=${config.self.id} repo=${selfRepoPath}`);
 
-    const forcedSessionKey = process.env.AGM_FORCED_SESSION_KEY ?? null;
+    const forcedSessionKey = process.env.AGM_FORCED_SESSION_KEY ?? config.notifications?.bind_session_key ?? config.notifications?.forced_session_key ?? null;
     const selfId = config.self.id;
     const boundSessionKey = sessionBindings.get(selfId);
     const { sessionKey, routeSource } = resolveRouteTarget({ forcedSessionKey, boundSessionKey });

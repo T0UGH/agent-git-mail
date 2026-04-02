@@ -9,8 +9,13 @@ export const SelfConfigSchema = z.object({
 
 export const NotificationsConfigSchema = z.object({
   default_target: z.string().optional().default('main'),
+  bind_session_key: z.string().nullable().optional().default(null),
   forced_session_key: z.string().nullable().optional().default(null),
-});
+}).transform((v) => ({
+  default_target: v.default_target,
+  bind_session_key: v.bind_session_key ?? v.forced_session_key ?? null,
+  forced_session_key: v.forced_session_key ?? null,
+}));
 
 export const RuntimeConfigSchema = z.object({
   poll_interval_seconds: z.number().optional().default(30),

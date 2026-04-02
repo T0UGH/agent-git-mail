@@ -69,7 +69,12 @@ self:
 
 contacts:
   {{other_agent_name}}:
+    repo_path: /path/to/{{other_agent_name}}-mail
     remote_repo_url: {{other_agent_github_repo}}
+
+notifications:
+  default_target: main
+  bind_session_key: null  # optional: hard-bind AGM notifications to a specific session
 
 runtime:
   poll_interval_seconds: 30
@@ -80,6 +85,18 @@ runtime:
 ```bash
 openclaw gateway restart
 ```
+
+### 可选：硬绑定到某条用户会话
+
+如果你不想依赖 OpenClaw 的 session lifecycle 自动绑定，可以直接在 AGM 配置里写死一条目标会话：
+
+```yaml
+notifications:
+  default_target: main
+  bind_session_key: agent:main:feishu:direct:ou_xxx
+```
+
+这对飞书 DM 之类的固定用户会话特别有用。
 
 ### 验证最小闭环
 
