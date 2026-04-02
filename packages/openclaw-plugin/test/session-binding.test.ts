@@ -1,4 +1,7 @@
 import { describe, expect, it } from 'vitest';
+import { mkdtempSync, rmSync } from 'fs';
+import { tmpdir } from 'os';
+import { join } from 'path';
 import { SessionBindingStore } from '../src/session-binding.js';
 
 describe('SessionBindingStore', () => {
@@ -29,5 +32,19 @@ describe('SessionBindingStore', () => {
     expect(store.get('leo')).toBe('agent:main:feishu:direct:ou_xxx');
     store.unbind('leo', 'agent:main:feishu:direct:ou_xxx');
     expect(store.get('leo')).toBeUndefined();
+  });
+
+  it('persists bindings across store recreation', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'agm-session-binding-'));
+    const file = join(dir, 'bindings.json');
+    try {
+      const store1 = new SessionBindingStore(file);
+      store1.bind('agent:main:feishu:direct:ou_xxx', 'leo');
+
+      const store2 = new SessionBindingStore(file);
+      expect(store2.get('leo')).toBe('agent:main:feishu:direct:ou_xxx');
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
   });
 });
