@@ -111,7 +111,20 @@ async function watchAgent(
   const lastSeen = await waterline.read();
 
   if (!lastSeen) {
-    // First run: set waterline, don't backfill
+    // First run: find root commit and process all mail committed up to HEAD
+    const rootCommit = await repo.getRootCommit();
+    if (rootCommit) {
+      const diffOutput = await repo.diffNames(rootCommit, currentSha);
+      const newInboxFiles = parseDiff(diffOutput);
+      for (const filename of newInboxFiles) {
+        const from = await extractFrom(resolve(agent.repo_path, 'inbox', filename));
+        console.log(`[daemon] new mail for ${name}: from=${from} file=${filename}`);
+        if (onNewMail) {
+          await onNewMail({ agent: name, filename, from });
+        }
+      }
+    }
+    // Set waterline to HEAD and exit
     await waterline.write(currentSha);
     return;
   }

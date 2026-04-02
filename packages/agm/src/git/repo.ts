@@ -1,4 +1,4 @@
-import { git, GitExecError } from './exec.js';
+import { git, gitAsync, GitExecError } from './exec.js';
 
 export class GitRepo {
   constructor(private repoPath: string) {}
@@ -48,8 +48,19 @@ export class GitRepo {
     }
   }
 
-  async pull(): Promise<void> {
-    this.run(['pull', '--rebase']);
+  async pull(timeoutMs = 10000): Promise<void> {
+    try {
+      await Promise.race([
+        gitAsync(this.repoPath, ['pull', '--rebase']),
+        new Promise((_, reject) =>
+          setTimeout(() => reject(new Error('pull timeout')), timeoutMs)
+        ),
+      ]);
+    } catch (e) {
+      if (e instanceof Error && e.message === 'pull timeout') return;
+      if (e instanceof GitExecError && e.exitCode === 0) return;
+      throw e;
+    }
   }
 
   async moveFile(from: string, to: string): Promise<void> {
@@ -74,6 +85,17 @@ export class GitRepo {
 
   async getMergedBase(from: string, to: string): Promise<string> {
     return this.run(['merge-base', from, to]);
+  }
+
+  async getRootCommit(): Promise<string | null> {
+    try {
+      // git rev-list --reverse lists commits oldest-first; first line = root commit
+      const revs = this.run(['rev-list', '--reverse', 'HEAD']);
+      const lines = revs.trim().split('\n').filter(Boolean);
+      return lines[0] ?? null;
+    } catch {
+      return null;
+    }
   }
 
   async hasRemote(): Promise<boolean> {

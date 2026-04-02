@@ -5,8 +5,9 @@
 
 set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-AGM_DIR="$(cd "$SCRIPT_DIR/../.." && pwd)"
-IMAGE_NAME="agm-integration-test:$(id -u)"
+AGM_DIR="$SCRIPT_DIR/../.."  # project root
+AGM_PKG="$SCRIPT_DIR/.."     # packages/agm (for runtime mount)
+IMAGE_NAME="agm-integration-test:local"
 
 # Build image (uses dist/ already built on host)
 echo "Building AGM integration test image..."
@@ -20,6 +21,5 @@ docker build \
 echo ""
 echo "Running integration tests in isolated container..."
 docker run --rm \
-  -v "$AGM_DIR:/workspace/packages/agm:ro" \
-  "$IMAGE_NAME" \
-  bash /workspace/packages/agm/test/docker/run.sh
+  -v "$AGM_PKG:/workspace/packages/agm:ro" \
+  "$IMAGE_NAME"

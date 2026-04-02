@@ -39,11 +39,16 @@ const subcommands: Record<string, (argv: Record<string, unknown>) => Promise<voi
   archive: async (argv) => {
     await cmdArchive(argv as unknown as Parameters<typeof cmdArchive>[0]);
   },
-  daemon: async () => {
+  daemon: async (argv) => {
     const { runDaemon } = await import('./app/run-daemon.js');
     const { loadConfig } = await import('./config/load.js');
     const config = loadConfig();
-    await runDaemon({ config });
+    const once = argv['once'] === true;
+    await runDaemon({
+      config,
+      // Pass a no-op onNewMail to trigger one-shot mode
+      ...(once ? { onNewMail: async () => {} } : {}),
+    });
   },
   bootstrap: async (argv) => {
     const opts = {
@@ -151,7 +156,7 @@ Subcommands:
   read <filename.md> --agent <a> [--dir inbox|outbox|archive]
   list --agent <a> [--dir inbox|outbox|archive] [--format table|json]
   archive <filename.md> --agent <a>
-  daemon                   Run the mail daemon
+  daemon [--once]          Run the mail daemon (use --once for single poll)
   bootstrap                Bootstrap AGM (self + daemon + external activator)
 
 Bootstrap options:
