@@ -3,6 +3,8 @@
 import { realpathSync } from 'fs';
 import { fileURLToPath } from 'url';
 import { cmdConfigShow, cmdConfigGet } from './cli/commands/config.js';
+import { cmdDoctor } from './cli/commands/doctor.js';
+import { cmdLog } from './cli/commands/log.js';
 import { cmdSend } from './cli/commands/send.js';
 import { cmdReply } from './cli/commands/reply.js';
 import { cmdRead } from './cli/commands/read.js';
@@ -50,6 +52,12 @@ const subcommands: Record<string, (argv: Record<string, unknown>) => Promise<voi
       ...(once ? { onNewMail: async () => {} } : {}),
     });
   },
+  doctor: async (argv) => {
+    await cmdDoctor(argv as unknown as Parameters<typeof cmdDoctor>[0]);
+  },
+  log: async (argv) => {
+    await cmdLog(argv as unknown as Parameters<typeof cmdLog>[0]);
+  },
   bootstrap: async (argv) => {
     const opts = {
       selfId: String(argv['selfId'] ?? ''),
@@ -78,6 +86,8 @@ function positionalKeyFor(subcommand: string): string | null {
     case 'read':
     case 'archive':
       return 'filename';
+    case 'doctor':
+      return 'group';
     default:
       return null;
   }
@@ -157,6 +167,9 @@ Subcommands:
   list --agent <a> [--dir inbox|outbox|archive] [--format table|json]
   archive <filename.md> --agent <a>
   daemon [--once]          Run the mail daemon (use --once for single poll)
+  doctor [config|git|...]  Run health checks (default: all groups)
+  log [--tail <n>] [--since <duration>] [--type <type>] [--json]
+                            Show structured event log
   bootstrap                Bootstrap AGM (self + daemon + external activator)
 
 Bootstrap options:

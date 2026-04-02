@@ -7,6 +7,7 @@ import type { Config } from '../config/schema.js';
 import { getAgentEntries, getSelfId, getSelfLocalRepoPath, isConfigV2 } from '../config/index.js';
 import { hasActivated, markActivated } from '../activator/checkpoint-store.js';
 import { createActivator, AgmActivator } from '../activator/index.js';
+import { appendEvent } from '../log/events.js';
 
 export interface DaemonOptions {
   config: Config;
@@ -58,6 +59,19 @@ async function runPoll(opts: DaemonOptions): Promise<void> {
     return;
   }
 
+  // Write daemon_poll_started
+  try {
+    appendEvent({
+      ts: new Date().toISOString(),
+      type: 'daemon_poll_started',
+      level: 'info',
+      self_id: selfId,
+      message: 'daemon poll started',
+    });
+  } catch {
+    // Non-fatal
+  }
+
   // Create activator from config (v2 only)
   const activator = createActivator(opts.config);
 
@@ -67,10 +81,35 @@ async function runPoll(opts: DaemonOptions): Promise<void> {
     if (opts.onNewMail) {
       await opts.onNewMail(mail);
     }
+    // Write new_mail_detected
+    try {
+      appendEvent({
+        ts: new Date().toISOString(),
+        type: 'new_mail_detected',
+        level: 'info',
+        self_id: selfId,
+        filename: mail.filename,
+        message: `new mail detected: ${mail.filename}`,
+      });
+    } catch {
+      // Non-fatal
+    }
     // Handle external activation via activator
     if (!activator) return;
     if (hasActivated(selfId, mail.filename)) {
       log(`[daemon] activation skipped (already activated): ${mail.filename}`);
+      try {
+        appendEvent({
+          ts: new Date().toISOString(),
+          type: 'activation_skipped_checkpoint',
+          level: 'info',
+          self_id: selfId,
+          filename: mail.filename,
+          message: `activation skipped (checkpoint): ${mail.filename}`,
+        });
+      } catch {
+        // Non-fatal
+      }
       return;
     }
     const result = await activator.activate({
@@ -82,18 +121,60 @@ async function runPoll(opts: DaemonOptions): Promise<void> {
     if (result.ok) {
       markActivated(selfId, mail.filename);
       log(`[daemon] activation sent: ${mail.filename} via ${activator.name}`);
+      try {
+        appendEvent({
+          ts: new Date().toISOString(),
+          type: 'activation_sent',
+          level: 'info',
+          self_id: selfId,
+          filename: mail.filename,
+          message: `activation sent: ${mail.filename}`,
+          details: { activator: activator.name },
+        });
+      } catch {
+        // Non-fatal
+      }
     } else {
       log(`[daemon] activation failed: ${mail.filename} error=${result.error}`);
+      try {
+        appendEvent({
+          ts: new Date().toISOString(),
+          type: 'activation_failed',
+          level: 'error',
+          self_id: selfId,
+          filename: mail.filename,
+          message: `activation failed: ${mail.filename}`,
+          details: { error: result.error },
+        });
+      } catch {
+        // Non-fatal
+      }
     }
   };
 
-  await watchAgent(selfId, { repo_path: selfRepoPath }, handleMail);
+  let mailCount = 0;
+  await watchAgent(selfId, { repo_path: selfRepoPath }, handleMail, (count: number) => { mailCount = count; });
+
+  // Write daemon_poll_finished
+  try {
+    appendEvent({
+      ts: new Date().toISOString(),
+      type: 'daemon_poll_finished',
+      level: 'info',
+      self_id: selfId,
+      message: `daemon poll finished, ${mailCount} mail(s) processed`,
+      details: { mail_count: mailCount },
+    });
+  } catch {
+    // Non-fatal
+  }
 }
 
 async function watchAgent(
   name: string,
   agent: { repo_path: string },
   onNewMail?: (mail: { agent: string; filename: string; from: string }) => Promise<void>,
+  onMailCount?: (count: number) => void,
 ): Promise<void> {
   const repo = new GitRepo(agent.repo_path);
   const valid = await repo.verify();
@@ -101,14 +182,33 @@ async function watchAgent(
 
   const waterline = new GitWaterline(repo);
 
+  let pullTimedOut = false;
   try {
     await repo.pull();
-  } catch {
-    // ignore pull errors
+  } catch (e) {
+    // Check if it's a timeout error
+    const msg = e instanceof Error ? e.message : String(e);
+    if (msg === 'pull timeout') {
+      pullTimedOut = true;
+      try {
+        appendEvent({
+          ts: new Date().toISOString(),
+          type: 'pull_timeout',
+          level: 'warn',
+          self_id: name,
+          message: `git pull timed out for ${name}`,
+        });
+      } catch {
+        // Non-fatal
+      }
+    }
+    // ignore other pull errors
   }
 
   const currentSha = await repo.getHeadSha();
   const lastSeen = await waterline.read();
+
+  let totalMail = 0;
 
   if (!lastSeen) {
     // First run: find root commit and process all mail committed up to HEAD
@@ -122,15 +222,18 @@ async function watchAgent(
         if (onNewMail) {
           await onNewMail({ agent: name, filename, from });
         }
+        totalMail++;
       }
     }
     // Set waterline to HEAD and exit
     await waterline.write(currentSha);
+    if (onMailCount) onMailCount(totalMail);
     return;
   }
 
   if (lastSeen === currentSha) {
     // No new commits
+    if (onMailCount) onMailCount(0);
     return;
   }
 
@@ -143,9 +246,11 @@ async function watchAgent(
     if (onNewMail) {
       await onNewMail({ agent: name, filename, from });
     }
+    totalMail++;
   }
 
   await waterline.write(currentSha);
+  if (onMailCount) onMailCount(totalMail);
 }
 
 function parseDiff(diffOutput: string): string[] {

@@ -9,3 +9,7 @@ export function getConfigPath(): string {
 export function getConfigDir(): string {
   return process.env['AGM_CONFIG_DIR'] ?? resolve(homedir(), '.config', 'agm');
 }
+
+export function getEventsPath(): string {
+  return resolve(getConfigDir(), 'events.jsonl');
+}
