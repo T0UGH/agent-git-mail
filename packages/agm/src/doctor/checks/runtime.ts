@@ -4,7 +4,8 @@
  * Reads from events.jsonl (not from daemon process state).
  */
 
-import { parseEvents, queryLastEvent } from '../../log/events.js';
+import { parseEvents } from '../../log/events.js';
+import type { EventRecord } from '../../log/event-types.js';
 import type { CheckResult } from '../types.js';
 
 const RECENT_WINDOW_MS = 10 * 60 * 1000; // 10 minutes
@@ -46,8 +47,11 @@ export function checkRuntime(): CheckResult[] {
   }
 
   // Check: last activation result
-  const lastActivation = queryLastEvent('activation_sent')
-    ?? queryLastEvent('activation_failed');
+  // Get ALL activation-related events and take the truly latest by timestamp
+  const activationEvents = recentEvents().filter(e =>
+    e.type === 'activation_sent' || e.type === 'activation_failed' || e.type === 'activation_skipped_checkpoint'
+  );
+  const lastActivation = activationEvents[0] ?? null;
 
   if (!lastActivation) {
     results.push({
@@ -71,6 +75,15 @@ export function checkRuntime(): CheckResult[] {
       code: 'LAST_ACTIVATION_FAILED',
       message: `last activation failed: ${lastActivation.message}`,
       details: { error: lastActivation.details?.error, ts: lastActivation.ts },
+    });
+  } else {
+    // activation_skipped — not a failure, but worth noting
+    results.push({
+      name: 'last_activation',
+      status: 'OK',
+      code: 'OK',
+      message: `last activation skipped (checkpoint) at ${lastActivation.ts}`,
+      details: { filename: lastActivation.filename, ts: lastActivation.ts },
     });
   }
 

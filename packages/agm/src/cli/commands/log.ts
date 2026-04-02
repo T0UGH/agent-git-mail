@@ -26,7 +26,15 @@ const EVENT_TYPES = [
 ] as const;
 
 export async function cmdLog(argv: Record<string, unknown>): Promise<void> {
-  const tail = typeof argv['tail'] === 'number' ? argv['tail'] : 20;
+  let tail = 20;
+  if (argv['tail'] !== undefined) {
+    const n = Number(argv['tail']);
+    if (!Number.isFinite(n) || n < 1 || !Number.isInteger(n)) {
+      console.error(`--tail must be a positive integer`);
+      process.exit(1);
+    }
+    tail = n;
+  }
   const typeArg = String(argv['type'] ?? '');
   const json = argv['json'] === true;
 

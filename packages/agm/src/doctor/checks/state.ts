@@ -28,38 +28,49 @@ export function checkState(): CheckResult[] {
   } else {
     try {
       const raw = readFileSync(statePath, 'utf-8');
-      const state = JSON.parse(raw);
+      const state = JSON.parse(raw) as Record<string, unknown>;
 
-      // Check checkpoint keys format
-      const keys = Object.keys(state);
-      let malformedKeys = 0;
-      for (const key of keys) {
-        if (!key.includes('::')) malformedKeys++;
-      }
-
-      if (malformedKeys > 0) {
+      // Validate structure: { processed: { [key: string]: { activatedAt: string } } }
+      const processed = state['processed'];
+      if (!processed || typeof processed !== 'object' || processed === null) {
         results.push({
-          name: 'activation_state_keys',
-          status: 'WARN',
-          code: 'MALFORMED_CHECKPOINT_KEYS',
-          message: `${malformedKeys} checkpoint key(s) missing '::' separator`,
-          details: { total_keys: keys.length, malformed: malformedKeys },
+          name: 'activation_state',
+          status: 'FAIL',
+          code: 'ACTIVATION_STATE_INVALID',
+          message: 'activation-state.json missing "processed" object',
         });
       } else {
+        const processedObj = processed as Record<string, unknown>;
+        const checkpointKeys = Object.keys(processedObj);
+        let malformedKeys = 0;
+        for (const key of checkpointKeys) {
+          if (!key.includes('::')) malformedKeys++;
+        }
+
+        if (malformedKeys > 0) {
+          results.push({
+            name: 'activation_state_keys',
+            status: 'WARN',
+            code: 'MALFORMED_CHECKPOINT_KEYS',
+            message: `${malformedKeys} checkpoint key(s) missing '::' separator`,
+            details: { total_keys: checkpointKeys.length, malformed: malformedKeys },
+          });
+        } else {
+          results.push({
+            name: 'activation_state_keys',
+            status: 'OK',
+            code: 'OK',
+            message: `${checkpointKeys.length} checkpoint(s) with valid keys`,
+          });
+        }
+
         results.push({
-          name: 'activation_state_keys',
+          name: 'activation_state',
           status: 'OK',
           code: 'OK',
-          message: `${keys.length} checkpoint(s) with valid keys`,
+          message: `activation-state.json valid (${checkpointKeys.length} entries in processed)`,
         });
       }
-
-      results.push({
-        name: 'activation_state',
-        status: 'OK',
-        code: 'OK',
-        message: `activation-state.json valid (${keys.length} entries)`,
-      });
     } catch (e) {
       results.push({
         name: 'activation_state',
