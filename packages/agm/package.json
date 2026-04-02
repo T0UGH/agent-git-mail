@@ -1,6 +1,6 @@
 {
   "name": "@t0u9h/agent-git-mail",
-  "version": "0.1.9",
+  "version": "0.1.10",
   "private": false,
   "type": "module",
   "description": "A minimal, git-native async mail system for assistant-style agents.",
