@@ -83,7 +83,6 @@ Optional environment variables:
 
 - `AGM_CONFIG_PATH=/custom/path/config.yaml`
 - `AGM_ACTIVATION_POLL_INTERVAL=5` (activation poll interval in seconds)
-- `AGM_SKIP_PLUGIN_INSTALL=1` (legacy plugin, not needed for new setups)
 
 ### Manual bootstrap
 
@@ -208,17 +207,6 @@ Archive a mail:
 
 ```bash
 agm archive 2026-03-29T10-21-00-boron-to-atlas.md --agent atlas
-```
-
-## Legacy: OpenClaw plugin path
-
-For older configs (v1/legacy, or v2 without `activation` block), the OpenClaw plugin handles notifications via the enqueue + heartbeat mechanism. This path is deprecated — new setups should use the external activator.
-
-If you are on a legacy setup, install the plugin:
-
-```bash
-openclaw plugins install @t0u9h/openclaw-agent-git-mail
-openclaw gateway restart
 ```
 
 ## Status

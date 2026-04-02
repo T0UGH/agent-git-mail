@@ -51,7 +51,6 @@ const subcommands: Record<string, (argv: Record<string, unknown>) => Promise<voi
       selfRemoteRepoUrl: String(argv['selfRemoteRepoUrl'] ?? ''),
       selfLocalRepoPath: String(argv['selfLocalRepoPath'] ?? ''),
       configPath: argv['configPath'] ? String(argv['configPath']) : undefined,
-      skipPluginInstall: argv['skipPluginInstall'] === true,
       activationOpenId: argv['activationOpenId'] ? String(argv['activationOpenId']) : undefined,
       activationPollIntervalSeconds: argv['activationPollIntervalSeconds']
         ? Number(argv['activationPollIntervalSeconds'])
@@ -153,15 +152,14 @@ Subcommands:
   list --agent <a> [--dir inbox|outbox|archive] [--format table|json]
   archive <filename.md> --agent <a>
   daemon                   Run the mail daemon
-  bootstrap                Bootstrap AGM (self + plugin installation)
+  bootstrap                Bootstrap AGM (self + daemon + external activator)
 
 Bootstrap options:
   --self-id <id>                      Required. Your agent / user ID.
   --self-remote-repo-url <url>        Required. Remote git repo URL (e.g. https://github.com/USER/mailbox.git).
   --self-local-repo-path <path>        Required. Local path where the repo will be cloned / already exists.
   --config-path <path>                 Optional. Custom config path.
-  --skip-plugin-install                Optional. Skip plugin installation (legacy, plugin is now optional).
-  --activation-open-id <openId>       Optional. Feishu open_id for external activation (activator path).
+  --activation-open-id <openId>       Optional. Feishu open_id for external activation.
   --activation-poll-interval-seconds <n>  Optional. Activation poll interval (default 5).
   --dry-run                           Optional. Print what would be done without writing.
   --json                              Optional. Output machine-readable JSON.

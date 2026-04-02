@@ -11,7 +11,6 @@
 # Optional env vars:
 #   AGM_CONFIG_PATH=/custom/path/config.yaml        Custom config path
 #   AGM_ACTIVATION_POLL_INTERVAL=5                  Activation poll interval (seconds)
-#   AGM_SKIP_PLUGIN_INSTALL=1                       Skip legacy plugin install
 
 set -euo pipefail
 
@@ -20,7 +19,6 @@ SELF_ID="${AGM_SELF_ID:-}"
 SELF_REMOTE_REPO_URL="${AGM_SELF_REMOTE_REPO_URL:-}"
 SELF_LOCAL_REPO_PATH="${AGM_SELF_LOCAL_REPO_PATH:-}"
 AGM_CONFIG_PATH="${AGM_CONFIG_PATH:-}"
-AGM_SKIP_PLUGIN_INSTALL="${AGM_SKIP_PLUGIN_INSTALL:-}"
 AGM_ACTIVATION_OPEN_ID="${AGM_ACTIVATION_OPEN_ID:-}"
 AGM_ACTIVATION_POLL_INTERVAL="${AGM_ACTIVATION_POLL_INTERVAL:-}"
 OPENCLAW_SKILLS_DIR="${OPENCLAW_SKILLS_DIR:-$HOME/.openclaw/workspace/skills}"
@@ -129,7 +127,6 @@ BUILD_ARGS=(
   --self-id "$SELF_ID"
   --self-remote-repo-url "$SELF_REMOTE_REPO_URL"
   --self-local-repo-path "$SELF_LOCAL_REPO_PATH"
-  --skip-plugin-install
 )
 
 if [[ -n "$AGM_CONFIG_PATH" ]]; then

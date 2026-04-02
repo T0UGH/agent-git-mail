@@ -28,15 +28,13 @@ export function createFeishuOpenclawAgent(
 
     async activate(input: ActivationInput): Promise<ActivationResult> {
       const message = renderTemplate(config.messageTemplate, input);
-      const escapedMessage = message.replace(/"/g, '\\"').replace(/\n/g, '\\n');
-      const escapedOpenId = config.openId.replace(/"/g, '\\"');
 
       try {
         execFileSync('openclaw', [
           'agent',
           '--channel', 'feishu',
-          '-t', escapedOpenId,
-          '-m', escapedMessage,
+          '-t', config.openId,
+          '-m', message,
           '--deliver',
         ], {
           stdio: ['ignore', 'pipe', 'pipe'],

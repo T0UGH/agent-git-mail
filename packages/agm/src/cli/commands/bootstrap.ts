@@ -8,7 +8,6 @@ import { loadConfigSafe, isConfigV2, isConfigV1, getConfigPath, type ConfigV2 } 
 export const EXIT_INPUT_ERROR = 2;
 export const EXIT_ENV_MISSING = 3;
 export const EXIT_REPO_INVALID = 4;
-export const EXIT_PLUGIN_INSTALL_FAILED = 5;
 export const EXIT_CONFIG_CONFLICT = 6;
 export const EXIT_REMOTE_MISMATCH = 7;
 
@@ -17,7 +16,6 @@ export interface BootstrapOptions {
   selfRemoteRepoUrl: string;
   selfLocalRepoPath: string;
   configPath?: string;
-  skipPluginInstall?: boolean;
   activationOpenId?: string;
   activationPollIntervalSeconds?: number;
   dryRun?: boolean;
@@ -228,35 +226,7 @@ function buildConfigYaml(
   return stringifyYaml(config, { indent: 2 });
 }
 
-function installPlugin(): CheckResult {
-  const cmd = detectOpenClawCommand();
-  if (!cmd) {
-    return {
-      ok: false,
-      code: EXIT_PLUGIN_INSTALL_FAILED,
-      status: 'plugin_install_failed',
-      message: 'openclaw command not found',
-      details: { error: 'neither openclaw nor openclaw-gateway found' },
-    };
-  }
-  try {
-    execSync(`${cmd} plugins install @t0u9h/openclaw-agent-git-mail`, {
-      stdio: 'pipe',
-      timeout: 60_000,
-    });
-    return { ok: true, code: 0, status: 'ok', message: 'Plugin installed' };
-  } catch (e) {
-    return {
-      ok: false,
-      code: EXIT_PLUGIN_INSTALL_FAILED,
-      status: 'plugin_install_failed',
-      message: 'Failed to install @t0u9h/openclaw-agent-git-mail plugin',
-      details: { error: String(e) },
-    };
-  }
-}
-
-function outputJson(result: CheckResult & { details?: Record<string, unknown>; configPath?: string; selfId?: string; selfRemoteUrl?: string; selfLocalRepoPath?: string; pluginInstalled?: boolean }) {
+function outputJson(result: CheckResult & { details?: Record<string, unknown>; configPath?: string; selfId?: string; selfRemoteUrl?: string; selfLocalRepoPath?: string }) {
   console.log(JSON.stringify({
     ok: result.ok,
     status: result.status,
@@ -277,7 +247,7 @@ function outputText(result: CheckResult & { details?: Record<string, unknown> })
 }
 
 export async function cmdBootstrap(argv: BootstrapOptions): Promise<void> {
-  const { selfId, selfRemoteRepoUrl, selfLocalRepoPath, configPath, skipPluginInstall, activationOpenId, activationPollIntervalSeconds, dryRun, json } = argv;
+  const { selfId, selfRemoteRepoUrl, selfLocalRepoPath, configPath, activationOpenId, activationPollIntervalSeconds, dryRun, json } = argv;
 
   const targetConfigPath = configPath ?? getConfigPath();
 
@@ -350,7 +320,6 @@ export async function cmdBootstrap(argv: BootstrapOptions): Promise<void> {
       details: {
         configPath: targetConfigPath,
         cloneAction,
-        pluginInstall: !skipPluginInstall,
         selfId,
         selfRemoteUrl: selfRemoteRepoUrl,
         selfLocalRepoPath,
@@ -368,7 +337,11 @@ export async function cmdBootstrap(argv: BootstrapOptions): Promise<void> {
       console.log(`   Self ID: ${selfId}`);
       console.log(`   Remote URL: ${selfRemoteRepoUrl}`);
       console.log(`   Local path: ${selfLocalRepoPath}`);
-      console.log(`   Plugin install: ${!skipPluginInstall ? 'yes' : 'no (--skip-plugin-install)'}`);
+      if (activationOpenId) {
+        console.log(`   Activation: enabled (open_id=${activationOpenId}, poll=${activationPollIntervalSeconds ?? 5}s)`);
+      } else {
+        console.log(`   Activation: not configured (add --activation-open-id)`);
+      }
       console.log(`\n   Config content:\n`);
       console.log('   ' + configYaml.replace(/\n/g, '\n   '));
     }
@@ -391,25 +364,12 @@ export async function cmdBootstrap(argv: BootstrapOptions): Promise<void> {
     process.exit(conflictCheck.code);
   }
 
-  // 6. Install plugin
-  let pluginInstalled = false;
-  if (!skipPluginInstall) {
-    // Note: plugin is legacy — new setups use the external activator instead
-    const pluginResult = installPlugin();
-    if (!pluginResult.ok) {
-      if (json) outputJson({ ...pluginResult, configPath: targetConfigPath, selfId, selfRemoteUrl: selfRemoteRepoUrl, selfLocalRepoPath });
-      else outputText(pluginResult);
-      process.exit(EXIT_PLUGIN_INSTALL_FAILED);
-    }
-    pluginInstalled = true;
-  }
-
-  // 7. Write config
+  // 6. Write config
   mkdirSync(dirname(targetConfigPath), { recursive: true });
   const configYaml = buildConfigYaml(selfId, selfRemoteRepoUrl, selfLocalRepoPath, activationOpenId, activationPollIntervalSeconds);
   writeFileSync(targetConfigPath, configYaml, 'utf-8');
 
-  const result: CheckResult & { configPath: string; selfId: string; selfRemoteUrl: string; selfLocalRepoPath: string; pluginInstalled: boolean } = {
+  const result: CheckResult & { configPath: string; selfId: string; selfRemoteUrl: string; selfLocalRepoPath: string } = {
     ok: true,
     code: 0,
     status: 'initialized',
@@ -418,13 +378,12 @@ export async function cmdBootstrap(argv: BootstrapOptions): Promise<void> {
     selfId,
     selfRemoteUrl: selfRemoteRepoUrl,
     selfLocalRepoPath,
-    pluginInstalled,
     details: {
       cloneAction: cloneResult.status,
       defaultTarget: 'main',
     },
   };
-  if (json) outputJson({ ...result, configPath: targetConfigPath, selfId, selfRemoteUrl: selfRemoteRepoUrl, selfLocalRepoPath, pluginInstalled });
+  if (json) outputJson({ ...result, configPath: targetConfigPath, selfId, selfRemoteUrl: selfRemoteRepoUrl, selfLocalRepoPath });
   else {
     console.log('✅ Bootstrap complete');
     console.log(`   Config: ${targetConfigPath}`);
@@ -432,16 +391,16 @@ export async function cmdBootstrap(argv: BootstrapOptions): Promise<void> {
     console.log(`   Self ID: ${selfId}`);
     console.log(`   Remote: ${selfRemoteRepoUrl}`);
     console.log(`   Local: ${selfLocalRepoPath}`);
-    if (pluginInstalled) {
-      console.log(`   Plugin installed: legacy (for old configs only)`);
-    } else if (activationOpenId) {
-      console.log(`   Plugin: skipped (external activator enabled)`);
+    if (activationOpenId) {
+      console.log(`   Activation: enabled (open_id=${activationOpenId})`);
+    } else {
+      console.log(`   Activation: not configured`);
     }
     console.log(`\n   Next: run 'agm daemon' to start the mail daemon.`);
     if (activationOpenId) {
       console.log(`   The daemon will wake your agent via Feishu when new mail arrives.`);
     } else {
-      console.log(`   Note: No activation configured. Add 'activation' section to config to enable Feishu wake-up.`);
+      console.log(`   Note: Add 'activation' section to config to enable Feishu wake-up.`);
     }
   }
 }

@@ -69,7 +69,7 @@ async function runPoll(opts: DaemonOptions): Promise<void> {
     }
     // Handle external activation via activator
     if (!activator) return;
-    if (hasActivated(mail.filename)) {
+    if (hasActivated(selfId, mail.filename)) {
       log(`[daemon] activation skipped (already activated): ${mail.filename}`);
       return;
     }
@@ -80,7 +80,7 @@ async function runPoll(opts: DaemonOptions): Promise<void> {
       message: `[AGM ACTION REQUIRED]\n你有新的 Agent Git Mail。\n请先执行：agm read ${mail.filename}`,
     });
     if (result.ok) {
-      markActivated(mail.filename);
+      markActivated(selfId, mail.filename);
       log(`[daemon] activation sent: ${mail.filename} via ${activator.name}`);
     } else {
       log(`[daemon] activation failed: ${mail.filename} error=${result.error}`);

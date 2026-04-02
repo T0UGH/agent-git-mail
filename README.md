@@ -1,32 +1,30 @@
 # Agent Git Mail
 
-一个极简、git-native 的 agent 异步邮箱系统，让 agent 重新通过“写信”来协作。
+一个极简、git-native 的 agent 异步邮箱系统，让 agent 重新通过"写信"来协作。
 
-**Simple is better.**  
+**Simple is better.**
 **No server. No task system. No orchestration maze.**
 
 每个 agent 一个 git repo；仓库就是它的邮箱。
 
-这不是工作型 agent 的任务总线。  
-它服务于 OpenClaw 这类长期在线、持续协作的助理型 agent，而不是 Claude Code、Codex 这类“干完就走”的工作型 agent。
+这不是工作型 agent 的任务总线。
+它服务于 OpenClaw 这类长期在线、持续协作的助理型 agent，而不是 Claude Code、Codex 这类"干完就走"的工作型 agent。
 
 ## 核心模型
 
-Agent Git Mail 的核心很简单：每个 agent 一个 git repo，仓库就是它的邮箱。  
-一封信就是一个普通 Markdown 文件，由 frontmatter 和正文组成；文件名就是主标识，`reply_to` 直接引用文件名。  
-一个很薄的 daemon 只负责发现新信并提醒 agent，不承担中心化的编排和调度。
+Agent Git Mail 的核心很简单：每个 agent 一个 git repo，仓库就是它的邮箱。
+一封信就是一个普通 Markdown 文件，由 frontmatter 和正文组成；文件名就是主标识，`reply_to` 直接引用文件名。
+daemon 发现新信后，通过 external activator 唤醒 agent。
 
 - **每个 agent 一个 remote mailbox repo + 一个本地 clone。** 远程 repo 是 transport truth。
 - **一封信就是一个 Markdown 文件。** frontmatter + 正文，就是完整协议。
 - **文件名就是主标识。** `reply_to` 直接引用文件名。
-- **daemon 只是邮差。** 它只发现新信并提醒 agent，不做中心化编排和调度。
-- **每个 agent 只写自己的本地 clone。** 不直接写对方本地仓库。
+- **daemon 只是邮差。** 它发现新信并通过 external activator 唤醒 agent，不做中心化编排和调度。
+- **external activator** 调用 `openclaw agent --channel feishu --deliver` 直接发送飞书消息唤醒 agent。
 
 ## 在 OpenClaw 里使用
 
 Agent Git Mail 的主场景不是单独运行一个 CLI，而是作为 OpenClaw 里的助理型 agent 异步协作层来使用。
-
-当前推荐安装路径：
 
 ### 一键安装（推荐）
 
@@ -34,6 +32,7 @@ Agent Git Mail 的主场景不是单独运行一个 CLI，而是作为 OpenClaw 
 AGM_SELF_ID={{your_agent_name}} \
 AGM_SELF_REMOTE_REPO_URL={{your_github_repo}} \
 AGM_SELF_LOCAL_REPO_PATH=$HOME/.agm/{{your_agent_name}} \
+AGM_ACTIVATION_OPEN_ID={{your_feishu_open_id}} \
 /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/T0UGH/agent-git-mail/main/scripts/install-openclaw.sh)"
 ```
 
@@ -43,13 +42,13 @@ AGM_SELF_LOCAL_REPO_PATH=$HOME/.agm/{{your_agent_name}} \
 - 安装 `@t0u9h/agent-git-mail`
 - 调用 `agm bootstrap`
 - clone 你的 mailbox repo 到本地目录
-- 安装 `@t0u9h/openclaw-agent-git-mail`
 
 这是一个**非交互式** installer。你需要显式提供：
 
 - `AGM_SELF_ID`
 - `AGM_SELF_REMOTE_REPO_URL`
 - `AGM_SELF_LOCAL_REPO_PATH`
+- `AGM_ACTIVATION_OPEN_ID`（external activator 用飞书 open_id）
 
 ### 配置 contacts
 
@@ -74,61 +73,34 @@ contacts:
 
 notifications:
   default_target: main
-  bind_session_key: null  # optional: hard-bind AGM notifications to a specific session
+  bind_session_key: null
+
+activation:
+  enabled: true
+  activator: feishu-openclaw-agent
+  poll_interval_seconds: 5
+  feishu:
+    open_id: ou_xxxxxxxxxxxxxxxxxxxxxxxxxx
+    message_template: |
+      [AGM ACTION REQUIRED]
+      你有新的 Agent Git Mail。
+      请先执行：agm read {{filename}}
 
 runtime:
   poll_interval_seconds: 30
 ```
 
-### 重启 OpenClaw gateway
+### 启动 daemon
 
 ```bash
-openclaw gateway restart
+# Terminal 1: OpenClaw gateway
+openclaw gateway start
+
+# Terminal 2: AGM daemon
+agm daemon
 ```
 
-### 可选：硬绑定到某条用户会话
-
-如果你不想依赖 OpenClaw 的 session lifecycle 自动绑定，可以直接在 AGM 配置里写死一条目标会话：
-
-```yaml
-notifications:
-  default_target: main
-  bind_session_key: agent:main:feishu:direct:ou_xxx
-```
-
-这对飞书 DM 之类的固定用户会话特别有用。
-
-### 验证最小闭环
-
-最小闭环的目标不是“跑一个 demo”，而是让 OpenClaw 中的助理型 agent 真正拥有一层异步邮箱能力：
-
-- agent repo 中出现一封新信
-- daemon 检测到它
-- plugin 将它转成目标主会话提醒
-- AGM skill 让 agent 明确先走 `agm read`，再决定 `agm reply` / `agm archive`
-- agent 在自己的长期会话里处理它
-
-### 手动安装（可选）
-
-如果你不想用 curl installer，也可以直接在仓库内执行：
-
-```bash
-AGM_SELF_ID={{your_agent_name}} \
-AGM_SELF_REMOTE_REPO_URL={{your_github_repo}} \
-AGM_SELF_LOCAL_REPO_PATH=$HOME/.agm/{{your_agent_name}} \
-./scripts/bootstrap.sh
-```
-
-或者手动执行：
-
-```bash
-npm install -g @t0u9h/agent-git-mail
-agm bootstrap \
-  --self-id {{your_agent_name}} \
-  --self-remote-repo-url {{your_github_repo}} \
-  --self-local-repo-path $HOME/.agm/{{your_agent_name}}
-openclaw plugins install @t0u9h/openclaw-agent-git-mail
-```
+daemon 检测到新邮件后，通过 external activator 发送飞书消息唤醒 agent。
 
 ## 当前状态
 
@@ -137,10 +109,9 @@ openclaw plugins install @t0u9h/openclaw-agent-git-mail
 已经成立的部分：
 
 - `agm` CLI 已发布到 npm：`@t0u9h/agent-git-mail`
-- OpenClaw plugin 已发布到 npm：`@t0u9h/openclaw-agent-git-mail`
+- external activator 通过 `openclaw agent --channel feishu --deliver` 唤醒 agent
 - `agm` 的核心 E2E 已补齐（send / reply / archive）
-- OpenClaw plugin 已确认可以被宿主安装、识别、加载，并启动 service
-- remote-repo-only transport 模型已经收口
+- daemon + external activator 闭环已验证
 
 仍在继续推进的部分：
 
@@ -154,14 +125,12 @@ openclaw plugins install @t0u9h/openclaw-agent-git-mail
 agent-git-mail/
 ├─ docs/
 ├─ packages/
-│  ├─ agm/
-│  └─ openclaw-plugin/
+│  └─ agm/          # CLI + daemon + external activator
 ├─ test/
 └─ scripts/
 ```
 
-- `packages/agm`：CLI / daemon / 协议 / git orchestration
-- `packages/openclaw-plugin`：OpenClaw 宿主适配层
+- `packages/agm`：CLI / daemon / 协议 / git orchestration / external activator
 - `scripts/install-openclaw.sh`：curl-friendly 安装入口
 - `scripts/bootstrap.sh`：仓库内 bootstrap 脚本
 

@@ -44,14 +44,16 @@ function saveState(state: ActivationState): void {
   writeFileSync(path, JSON.stringify(state, null, 2), 'utf-8');
 }
 
-export function hasActivated(filename: string): boolean {
+export function hasActivated(selfId: string, filename: string): boolean {
   const state = loadState();
-  return filename in state.processed;
+  const key = `${selfId}::${filename}`;
+  return key in state.processed;
 }
 
-export function markActivated(filename: string): void {
+export function markActivated(selfId: string, filename: string): void {
   const state = loadState();
-  state.processed[filename] = {
+  const key = `${selfId}::${filename}`;
+  state.processed[key] = {
     activatedAt: new Date().toISOString(),
   };
   saveState(state);
