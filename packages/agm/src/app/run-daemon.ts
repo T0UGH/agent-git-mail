@@ -4,7 +4,9 @@ import { parseFrontmatter } from '../domain/frontmatter.js';
 import { readFileSync } from 'fs';
 import { resolve } from 'path';
 import type { Config } from '../config/schema.js';
-import { getAgentEntries, getSelfId, getSelfLocalRepoPath, isConfigV2 } from '../config/index.js';
+import { resolveProfile } from '../config/profile.js';
+import { getProfileSelfId, getProfileSelfRemoteRepoUrl, getProfileContactRemoteRepoUrl, getProfileContactNames } from '../config/index.js';
+import { getSelfRepoPath } from '../config/profile-paths.js';
 import { hasActivated, markActivated } from '../activator/checkpoint-store.js';
 import { createActivator, AgmActivator } from '../activator/index.js';
 import { createHappyClawAdapter, HostAdapter } from '../host-adapter/index.js';
@@ -12,13 +14,15 @@ import { appendEvent } from '../log/events.js';
 
 export interface DaemonOptions {
   config: Config;
+  profile: string;
   agentName?: string;
   logger?: (msg: string) => void;
   onNewMail?: (mail: { agent: string; filename: string; from: string }) => Promise<void>;
 }
 
 export async function runDaemon(opts: DaemonOptions): Promise<void> {
-  const pollInterval = (opts.config.runtime?.poll_interval_seconds ?? 30) * 1000;
+  const profile = resolveProfile(opts.config, opts.profile);
+  const pollInterval = (profile.runtime?.poll_interval_seconds ?? 30) * 1000;
 
   if (opts.onNewMail) {
     // One-shot poll for testing
@@ -43,18 +47,13 @@ export async function runDaemon(opts: DaemonOptions): Promise<void> {
 /**
  * Poll for new mail in self inbox only (mailbox model).
  * Daemon watches the local self repo's inbox directory - not contact remotes.
- * For v0 legacy (no self), falls back to agentName lookup via getAgentEntries.
  */
 async function runPoll(opts: DaemonOptions): Promise<void> {
   const log = opts.logger ?? console.log;
-  const selfId = opts.agentName ?? getSelfId(opts.config) ?? 'self';
-  let selfRepoPath = getSelfLocalRepoPath(opts.config);
-  // v0 legacy: no self field, look up via agentName + getAgentEntries
-  if (!selfRepoPath) {
-    const entries = getAgentEntries(opts.config);
-    const entry = entries.find(([name]) => name === selfId);
-    selfRepoPath = entry?.[1] ?? null;
-  }
+  const profile = resolveProfile(opts.config, opts.profile);
+  const selfId = opts.agentName ?? getProfileSelfId(profile) ?? 'self';
+  const selfRepoPath = getSelfRepoPath(opts.profile);
+
   if (!selfRepoPath) {
     log('[daemon] no self local_repo_path configured, skipping');
     return;
@@ -68,15 +67,15 @@ async function runPoll(opts: DaemonOptions): Promise<void> {
       level: 'info',
       self_id: selfId,
       message: 'daemon poll started',
-    });
+    }, opts.profile);
   } catch {
     // Non-fatal
   }
 
   // Create host adapter (HappyClaw ingress) — preferred
-  const hostAdapter = createHappyClawAdapter(opts.config);
+  const hostAdapter = createHappyClawAdapter(opts.config, opts.profile);
   // Fall back to OpenClaw external activator
-  const activator = createActivator(opts.config);
+  const activator = createActivator(opts.config, opts.profile);
 
   // Build onNewMail wrapper that handles activation
   const handleMail = async (mail: { agent: string; filename: string; from: string }) => {
@@ -93,12 +92,12 @@ async function runPoll(opts: DaemonOptions): Promise<void> {
         self_id: selfId,
         filename: mail.filename,
         message: `new mail detected: ${mail.filename}`,
-      });
+      }, opts.profile);
     } catch {
       // Non-fatal
     }
     // Skip if already activated
-    if (hasActivated(selfId, mail.filename)) {
+    if (hasActivated(selfId, mail.filename, opts.profile)) {
       log(`[daemon] activation skipped (already activated): ${mail.filename}`);
       try {
         appendEvent({
@@ -108,7 +107,7 @@ async function runPoll(opts: DaemonOptions): Promise<void> {
           self_id: selfId,
           filename: mail.filename,
           message: `activation skipped (checkpoint): ${mail.filename}`,
-        });
+        }, opts.profile);
       } catch {
         // Non-fatal
       }
@@ -144,7 +143,7 @@ async function runPoll(opts: DaemonOptions): Promise<void> {
       return;
     }
     if (activationOk) {
-      markActivated(selfId, mail.filename);
+      markActivated(selfId, mail.filename, opts.profile);
       log(`[daemon] activation sent: ${mail.filename} via ${activationName}`);
       try {
         appendEvent({
@@ -155,7 +154,7 @@ async function runPoll(opts: DaemonOptions): Promise<void> {
           filename: mail.filename,
           message: `activation sent: ${mail.filename}`,
           details: { activator: activationName },
-        });
+        }, opts.profile);
       } catch {
         // Non-fatal
       }
@@ -170,7 +169,7 @@ async function runPoll(opts: DaemonOptions): Promise<void> {
           filename: mail.filename,
           message: `activation failed: ${mail.filename}`,
           details: { error: activationError },
-        });
+        }, opts.profile);
       } catch {
         // Non-fatal
       }
@@ -178,7 +177,7 @@ async function runPoll(opts: DaemonOptions): Promise<void> {
   };
 
   let mailCount = 0;
-  await watchAgent(selfId, { repo_path: selfRepoPath }, handleMail, (count: number) => { mailCount = count; });
+  await watchAgent(selfId, { repo_path: selfRepoPath }, opts.profile, handleMail, (count: number) => { mailCount = count; });
 
   // Write daemon_poll_finished
   try {
@@ -189,7 +188,7 @@ async function runPoll(opts: DaemonOptions): Promise<void> {
       self_id: selfId,
       message: `daemon poll finished, ${mailCount} mail(s) processed`,
       details: { mail_count: mailCount },
-    });
+    }, opts.profile);
   } catch {
     // Non-fatal
   }
@@ -198,6 +197,7 @@ async function runPoll(opts: DaemonOptions): Promise<void> {
 async function watchAgent(
   name: string,
   agent: { repo_path: string },
+  profile: string,
   onNewMail?: (mail: { agent: string; filename: string; from: string }) => Promise<void>,
   onMailCount?: (count: number) => void,
 ): Promise<void> {
@@ -222,7 +222,7 @@ async function watchAgent(
           level: 'warn',
           self_id: name,
           message: `git pull timed out for ${name}`,
-        });
+        }, profile);
       } catch {
         // Non-fatal
       }

@@ -15,15 +15,15 @@ function recentWindow(): Date {
 }
 
 /** Returns events from the recent window, newest first. */
-function recentEvents() {
-  return parseEvents({ since: recentWindow() });
+function recentEvents(profile: string) {
+  return parseEvents({ since: recentWindow() }, profile);
 }
 
-export function checkRuntime(): CheckResult[] {
+export function checkRuntime(profile: string): CheckResult[] {
   const results: CheckResult[] = [];
 
   // Check: recent daemon activity
-  const daemonEvents = recentEvents().filter(e =>
+  const daemonEvents = recentEvents(profile).filter(e =>
     e.type === 'daemon_poll_started' || e.type === 'daemon_poll_finished'
   );
 
@@ -48,7 +48,7 @@ export function checkRuntime(): CheckResult[] {
 
   // Check: last activation result
   // Get ALL activation-related events and take the truly latest by timestamp
-  const activationEvents = recentEvents().filter(e =>
+  const activationEvents = recentEvents(profile).filter(e =>
     e.type === 'activation_sent' || e.type === 'activation_failed' || e.type === 'activation_skipped_checkpoint'
   );
   const lastActivation = activationEvents[0] ?? null;
@@ -88,7 +88,7 @@ export function checkRuntime(): CheckResult[] {
   }
 
   // Check: recent pull timeouts
-  const recentTimeouts = recentEvents().filter(e => e.type === 'pull_timeout');
+  const recentTimeouts = recentEvents(profile).filter(e => e.type === 'pull_timeout');
   if (recentTimeouts.length > 0) {
     results.push({
       name: 'pull_timeout_recent',

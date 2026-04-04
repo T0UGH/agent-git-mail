@@ -9,7 +9,8 @@
 
 import type { HostAdapter } from './types.js';
 import { createHappyClawIngressAdapter } from './happyclaw-ingress.js';
-import { getHostIntegrationConfig } from '../config/index.js';
+import { resolveProfile } from '../config/profile.js';
+import { getProfileHostIntegrationConfig } from '../config/index.js';
 import type { Config } from '../config/schema.js';
 
 export { type HostAdapter, type MailboxEventInput, type HostAdapterResult } from './types.js';
@@ -18,8 +19,9 @@ export { type HostAdapter, type MailboxEventInput, type HostAdapterResult } from
  * Try to create a HappyClaw ingress adapter from host_integration config.
  * Returns null if host_integration is not configured or env token is missing.
  */
-export function createHappyClawAdapter(config: Config): HostAdapter | null {
-  const hostConfig = getHostIntegrationConfig(config);
+export function createHappyClawAdapter(config: Config, profileName: string): HostAdapter | null {
+  const profile = resolveProfile(config, profileName);
+  const hostConfig = getProfileHostIntegrationConfig(profile);
   if (!hostConfig) return null;
 
   if (hostConfig.kind !== 'happyclaw') return null;

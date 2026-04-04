@@ -5,12 +5,14 @@
 
 import { loadConfigSafe } from '../../config/load.js';
 import { getConfigPath } from '../../config/paths.js';
-import { isConfigV2 } from '../../config/schema.js';
+import { resolveProfile } from '../../config/profile.js';
+import { getProfileSelfRemoteRepoUrl } from '../../config/index.js';
+import { getSelfRepoPath } from '../../config/profile-paths.js';
 import type { CheckResult } from '../types.js';
 import { existsSync } from 'fs';
 import { git } from '../../git/exec.js';
 
-export function checkGit(): CheckResult[] {
+export function checkGit(profileName: string): CheckResult[] {
   const results: CheckResult[] = [];
 
   const loadResult = loadConfigSafe(getConfigPath());
@@ -26,17 +28,21 @@ export function checkGit(): CheckResult[] {
 
   const config = loadResult.data;
 
-  if (!isConfigV2(config)) {
+  // Resolve profile
+  let profile;
+  try {
+    profile = resolveProfile(config, profileName);
+  } catch {
     results.push({
       name: 'git_self_repo',
       status: 'FAIL',
-      code: 'CONFIG_NOT_V2',
-      message: 'git checks require v2 config format',
+      code: 'PROFILE_NOT_FOUND',
+      message: `profile '${profileName}' not found in config`,
     });
     return results;
   }
 
-  const selfRepoPath = config.self.local_repo_path;
+  const selfRepoPath = getSelfRepoPath(profileName);
 
   // Check: self repo path exists
   if (!selfRepoPath) {
@@ -109,7 +115,7 @@ export function checkGit(): CheckResult[] {
   });
 
   // Check: origin URL matches config
-  const expectedUrl = config.self?.remote_repo_url;
+  const expectedUrl = getProfileSelfRemoteRepoUrl(profile);
   if (!expectedUrl) {
     results.push({
       name: 'git_origin_matches_config',

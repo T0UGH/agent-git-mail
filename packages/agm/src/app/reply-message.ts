@@ -4,7 +4,10 @@ import { GitRepo } from '../git/repo.js';
 import { generateFilename, generateUniqueSuffix } from '../domain/filename.js';
 import { serializeFrontmatter, type MessageFrontmatter, parseFrontmatter } from '../domain/frontmatter.js';
 import { loadConfig } from '../config/load.js';
-import { getAgentRepoPath, getContactRemoteRepoUrl, unknownAgentError, isConfigV2 } from '../config/index.js';
+import { resolveProfile } from '../config/profile.js';
+import { getProfileSelfId, getProfileContactRemoteRepoUrl } from '../config/index.js';
+import { getSelfRepoPath, getContactCachePath } from '../config/profile-paths.js';
+import { ensureContactCache } from '../git/contact-cache.js';
 import { maybePush } from './git-push.js';
 import { ensureGitIdentity, ensureMaildirs } from '../git/preflight.js';
 
@@ -12,9 +15,11 @@ export interface ReplyOptions {
   originalFilename: string;
   from: string;
   bodyFile: string;
+  profile: string;
   dir?: 'inbox' | 'outbox';
   configPath?: string;
 }
+
 
 /**
  * Reply to a message. Mailbox model: writes to replier's outbox AND original sender's inbox.
@@ -22,9 +27,10 @@ export interface ReplyOptions {
  */
 export async function replyMessage(opts: ReplyOptions): Promise<{ filename: string }> {
   const config = loadConfig(opts.configPath);
+  const profile = resolveProfile(config, opts.profile);
+  const selfId = getProfileSelfId(profile);
 
-  const replierRepoPath = getAgentRepoPath(config, opts.from);
-  if (!replierRepoPath) unknownAgentError(opts.from, config);
+  const replierRepoPath = getSelfRepoPath(opts.from);
 
   const dir = opts.dir ?? 'inbox';
   // Search for the original message in inbox or outbox
@@ -54,25 +60,15 @@ export async function replyMessage(opts: ReplyOptions): Promise<{ filename: stri
   // recipient is whoever sent the original message
   const to = original.from;
 
-  // Verify recipient is known (recipient = original sender = 'to')
-  // v2: contacts have remote URLs; must also have local path for dual-write
-  // legacy v0/v1: use getAgentRepoPath which works for agents map
-  const recipientRepoPath = getAgentRepoPath(config, to);
-  if (isConfigV2(config)) {
-    if (!getContactRemoteRepoUrl(config, to)) {
-      unknownAgentError(to, config);
-    }
-    if (!recipientRepoPath) {
-      throw new Error(`Recipient ${to} has no local repo path. ` +
-        `Add "repo_path" to contacts.${to} in config for dual-write delivery.`);
-    }
-  } else {
-    if (!getAgentRepoPath(config, to)) {
-      unknownAgentError(to, config);
-    }
+  // Verify recipient is known (V3: check contacts have remote URLs)
+  const contactRemoteUrl = getProfileContactRemoteRepoUrl(profile, to);
+  if (!contactRemoteUrl) {
+    throw new Error(`Unknown recipient: ${to}`);
   }
 
-  const selfId = (config as { self?: { id?: string } }).self?.id;
+  // Ensure recipient's mailbox is available (validates remote URL, clones if needed)
+  await ensureContactCache({ profile: opts.profile, contactId: to, remoteRepoUrl: contactRemoteUrl });
+
   if (to === selfId) {
     throw new Error(`Cannot reply to yourself`);
   }
@@ -103,12 +99,12 @@ export async function replyMessage(opts: ReplyOptions): Promise<{ filename: stri
   await maybePush(replierRepo);
 
   // --- Original sender side: write to inbox ---
-  // recipientRepoPath is guaranteed non-null after checks above
-  const _recipientRepoPath = recipientRepoPath!;
-  await ensureMaildirs(_recipientRepoPath);
-  await ensureGitIdentity(_recipientRepoPath);
-  const recipientRepo = new GitRepo(_recipientRepoPath);
-  await writeFileAtomic(resolve(_recipientRepoPath, 'inbox', filename), content);
+  // Delivery target is sender's contact cache of the recipient
+  const recipientRepoPath = getContactCachePath(opts.profile, to);
+  await ensureMaildirs(recipientRepoPath);
+  await ensureGitIdentity(recipientRepoPath);
+  const recipientRepo = new GitRepo(recipientRepoPath);
+  await writeFileAtomic(resolve(recipientRepoPath, 'inbox', filename), content);
   await recipientRepo.add(`inbox/${filename}`);
   await recipientRepo.commit(`agm: deliver ${filename}`, `inbox/${filename}`);
   await maybePush(recipientRepo);

@@ -3,20 +3,19 @@
  * Validates activation-state.json and waterline git ref.
  */
 
-import { getConfigDir } from '../../config/paths.js';
 import { existsSync, readFileSync } from 'fs';
-import { resolve } from 'path';
 import { loadConfigSafe } from '../../config/load.js';
 import { getConfigPath } from '../../config/paths.js';
-import { isConfigV2 } from '../../config/schema.js';
+import { resolveProfile } from '../../config/profile.js';
+import { getSelfRepoPath, getActivationStatePath } from '../../config/profile-paths.js';
 import { git } from '../../git/exec.js';
 import type { CheckResult } from '../types.js';
 
-export function checkState(): CheckResult[] {
+export function checkState(profileName: string): CheckResult[] {
   const results: CheckResult[] = [];
 
   // Check: activation-state.json exists and is parseable
-  const statePath = resolve(getConfigDir(), 'activation-state.json');
+  const statePath = getActivationStatePath(profileName);
 
   if (!existsSync(statePath)) {
     results.push({
@@ -95,17 +94,21 @@ export function checkState(): CheckResult[] {
 
   const config = loadResult.data;
 
-  if (!isConfigV2(config)) {
+  // Resolve profile
+  let profile;
+  try {
+    profile = resolveProfile(config, profileName);
+  } catch {
     results.push({
       name: 'waterline_ref',
       status: 'WARN',
-      code: 'CONFIG_NOT_V2',
-      message: 'cannot check waterline: requires v2 config format',
+      code: 'PROFILE_NOT_FOUND',
+      message: `profile '${profileName}' not found in config`,
     });
     return results;
   }
 
-  const selfRepoPath = config.self.local_repo_path;
+  const selfRepoPath = getSelfRepoPath(profileName);
   if (!selfRepoPath) {
     results.push({
       name: 'waterline_ref',

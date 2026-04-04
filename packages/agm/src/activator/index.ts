@@ -5,24 +5,21 @@
 
 import { AgmActivator } from './types.js';
 import { createFeishuOpenclawAgent, FeishuActivatorConfig } from './feishu-openclaw-agent.js';
-import { Config } from '../config/schema.js';
-import { isConfigV2 } from '../config/schema.js';
+import { resolveProfile } from '../config/profile.js';
+import type { Config } from '../config/schema.js';
+import type { ActivationConfig } from '../config/schema.js';
 
-export interface ActivationConfig {
-  enabled: boolean;
-  activator: 'feishu-openclaw-agent';
-  dedupe_mode: 'filename';
-  feishu: FeishuActivatorConfig;
+export { AgmActivator, ActivationInput, ActivationResult } from './types.js';
+export { hasActivated, markActivated } from './checkpoint-store.js';
+
+export function isActivationEnabled(c: Config, profileName: string): boolean {
+  const profile = resolveProfile(c, profileName);
+  return !!(profile.activation?.enabled);
 }
 
-export function isActivationEnabled(c: Config): c is Config & { activation: ActivationConfig } {
-  if (!isConfigV2(c)) return false;
-  return !!(c as any).activation?.enabled;
-}
-
-export function createActivator(config: Config): AgmActivator | null {
-  if (!isConfigV2(config)) return null;
-  const act = (config as any).activation as ActivationConfig | undefined;
+export function createActivator(config: Config, profileName: string): AgmActivator | null {
+  const profile = resolveProfile(config, profileName);
+  const act = profile.activation as ActivationConfig | undefined;
   if (!act?.enabled) return null;
 
   if (act.activator === 'feishu-openclaw-agent') {
@@ -31,6 +28,3 @@ export function createActivator(config: Config): AgmActivator | null {
 
   return null;
 }
-
-export { AgmActivator, ActivationInput, ActivationResult } from './types.js';
-export { hasActivated, markActivated } from './checkpoint-store.js';

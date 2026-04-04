@@ -1,17 +1,17 @@
 /**
  * Append-only structured event log.
- * Events are appended to ~/.config/agm/events.jsonl (one JSON line per event).
+ * Events are appended to ~/.config/agm/state/<profile>/events.jsonl (one JSON line per event).
  */
 
 import { appendFileSync, existsSync, readFileSync } from 'fs';
 import { dirname } from 'path';
 import { mkdirSync } from 'fs';
-import { getEventsPath } from '../config/paths.js';
+import { getEventsPath } from '../config/profile-paths.js';
 import type { EventRecord, EventType } from './event-types.js';
 
 /** Append a single event (append-only, no tmp+rename). */
-export function appendEvent(event: EventRecord): void {
-  const path = getEventsPath();
+export function appendEvent(event: EventRecord, profile: string): void {
+  const path = getEventsPath(profile);
   // Ensure directory exists
   const dir = dirname(path);
   if (!existsSync(dir)) {
@@ -22,12 +22,16 @@ export function appendEvent(event: EventRecord): void {
 }
 
 /** Parse all events from the log, optionally filtered. */
-export function parseEvents(opts?: {
-  limit?: number;
-  since?: Date;
-  types?: EventType[];
-}): EventRecord[] {
-  const path = getEventsPath();
+export function parseEvents(
+  opts?: {
+    limit?: number;
+    since?: Date;
+    types?: EventType[];
+  },
+  profile?: string,
+): EventRecord[] {
+  if (!profile) return [];
+  const path = getEventsPath(profile);
   if (!existsSync(path)) return [];
 
   const raw = readFileSync(path, 'utf-8');
@@ -65,7 +69,7 @@ export function parseEvents(opts?: {
 }
 
 /** Query the last event of a specific type, or null if none. */
-export function queryLastEvent(type: EventType): EventRecord | null {
-  const events = parseEvents({ limit: 1, types: [type] });
+export function queryLastEvent(type: EventType, profile: string): EventRecord | null {
+  const events = parseEvents({ limit: 1, types: [type] }, profile);
   return events[0] ?? null;
 }

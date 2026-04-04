@@ -1,8 +1,10 @@
 import { readFileSync } from 'fs';
-import { resolve } from 'path';
 import { GitRepo } from '../git/repo.js';
 import { parseFrontmatter } from '../domain/frontmatter.js';
-import { getSelfId, getSelfLocalRepoPath, getContactRemoteRepoUrl, getContactNames, type Config } from '../config/index.js';
+import { resolveProfile } from '../config/profile.js';
+import { getProfileSelfId, getProfileContactRemoteRepoUrl, getProfileContactNames } from '../config/index.js';
+import { getSelfRepoPath } from '../config/profile-paths.js';
+import type { Config } from '../config/schema.js';
 
 export interface DiscoveredMail {
   contact: string;      // who sent this message
@@ -13,6 +15,7 @@ export interface DiscoveredMail {
 
 export interface RemoteDiscoveryOptions {
   config: Config;
+  profile: string;
 }
 
 /**
@@ -30,19 +33,20 @@ export interface RemoteDiscoveryOptions {
  */
 export async function discoverNewMail(opts: RemoteDiscoveryOptions): Promise<DiscoveredMail[]> {
   const config = opts.config;
-  const selfId = getSelfId(config);
+  const profile = resolveProfile(config, opts.profile);
+  const selfId = getProfileSelfId(profile);
   if (!selfId) throw new Error('self.id is required for remote mail discovery');
 
-  const selfRepoPath = getSelfLocalRepoPath(config);
+  const selfRepoPath = getSelfRepoPath(opts.profile);
   if (!selfRepoPath) throw new Error('self.local_repo_path is required for remote mail discovery');
 
   const selfRepo = new GitRepo(selfRepoPath);
 
-  const contactNames = getContactNames(config);
+  const contactNames = getProfileContactNames(profile);
   const results: DiscoveredMail[] = [];
 
   for (const contact of contactNames) {
-    const contactRemoteUrl = getContactRemoteRepoUrl(config, contact);
+    const contactRemoteUrl = getProfileContactRemoteRepoUrl(profile, contact);
     if (!contactRemoteUrl) continue; // skip unknown contacts
 
     // Ensure the contact remote exists as a remote in our local clone

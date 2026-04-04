@@ -4,22 +4,31 @@ import { mkdtempSync, rmSync, writeFileSync, readdirSync, readFileSync } from 'f
 import { tmpdir } from 'os';
 import { join } from 'path';
 import { sendMessage } from '../src/app/send-message.js';
+import { stringify } from 'yaml';
 
-// v1 format (legacy) - contacts have local paths, supports dual-write
-function makeConfigLegacy(repo1: string, repo2: string, name1: string, name2: string): string {
-  return `self:
-  id: ${name1}
-  repo_path: ${repo1}
-contacts:
-  ${name2}: ${repo2}
-`;
+// V3 format - profile-based config
+function makeConfigV3(repo1: string, repo2: string, name1: string, name2: string): object {
+  return {
+    profiles: {
+      [name1]: {
+        self: { id: name1, remote_repo_url: 'https://github.com/test/' + name1 + '.git' },
+        contacts: { [name2]: { remote_repo_url: 'https://github.com/test/' + name2 + '.git' } },
+        notifications: { default_target: 'main', bind_session_key: null, forced_session_key: null },
+        runtime: { poll_interval_seconds: 30 },
+      }
+    }
+  };
 }
 
 function initRepo(repoPath: string, email: string, name: string): void {
-  execSync(
-    `mkdir -p "${repoPath}" && cd "${repoPath}" && git init && git config user.email "${email}" && git config user.name "${name}" && mkdir -p inbox outbox archive && echo "init" > .init && git add .init && git commit -m "init"`,
-    { encoding: 'utf-8' },
-  );
+  // Clean slate for each init
+  rmSync(repoPath, { recursive: true, force: true });
+  execSync(`mkdir -p "${repoPath}"`, { encoding: 'utf-8' });
+  execSync(`git init --initial-branch=main`, { cwd: repoPath, encoding: 'utf-8' });
+  execSync(`git config user.email '${email}'`, { cwd: repoPath, encoding: 'utf-8' });
+  execSync(`git config user.name '${name}'`, { cwd: repoPath, encoding: 'utf-8' });
+  execSync(`mkdir -p "${repoPath}/inbox" "${repoPath}/outbox" "${repoPath}/archive"`, { encoding: 'utf-8' });
+  execSync(`echo "init" > "${repoPath}/.init" && git -C "${repoPath}" add .init && git -C "${repoPath}" commit -m "init"`, { encoding: 'utf-8' });
 }
 
 describe('send (mailbox model)', () => {
@@ -28,6 +37,8 @@ describe('send (mailbox model)', () => {
   let hexRepo: string;
   let configPath: string;
   let bodyFile: string;
+  let mtSelfRepo: string;
+  let mtContactCache: string;
 
   beforeEach(() => {
     const id = Date.now();
@@ -36,11 +47,19 @@ describe('send (mailbox model)', () => {
     configPath = join(tmp, `config-${id}.yaml`);
     bodyFile = join(tmp, `body-${id}.txt`);
 
-    initRepo(mtRepo, 'mt@test.com', 'mt');
-    initRepo(hexRepo, 'hex@test.com', 'hex');
+    // Set AGM_BASE_DIR so V3 path resolution points into our temp dir.
+    // getSelfRepoPath('mt')         → {AGM_BASE_DIR}/profiles/mt/self
+    // getContactCachePath('mt','hex') → {AGM_BASE_DIR}/profiles/mt/contacts/hex
+    process.env.AGM_BASE_DIR = tmp;
+
+    // Init repos at the V3-derived paths (where the app will look)
+    mtSelfRepo     = join(tmp, 'profiles', 'mt', 'self');
+    mtContactCache = join(tmp, 'profiles', 'mt', 'contacts', 'hex');
+    initRepo(mtSelfRepo,     'mt@test.com',  'mt');
+    initRepo(mtContactCache, 'hex@test.com', 'hex');
 
     writeFileSync(bodyFile, 'Hello from mt to hex', 'utf-8');
-    writeFileSync(configPath, makeConfigLegacy(mtRepo, hexRepo, 'mt', 'hex'), 'utf-8');
+    writeFileSync(configPath, stringify(makeConfigV3(mtRepo, hexRepo, 'mt', 'hex')), 'utf-8');
   });
 
   it('writes to sender outbox AND recipient inbox (dual-write)', async () => {
@@ -51,14 +70,15 @@ describe('send (mailbox model)', () => {
       bodyFile,
       expectsReply: true,
       configPath,
+      profile: 'mt',
     });
 
     // Sender outbox gets the message
-    const outboxFiles = readdirSync(join(mtRepo, 'outbox')).filter(f => f.endsWith('.md'));
+    const outboxFiles = readdirSync(join(mtSelfRepo, 'outbox')).filter(f => f.endsWith('.md'));
     expect(outboxFiles.length).toBe(1);
 
     // Recipient inbox ALSO gets the message (dual-write mailbox semantics)
-    const inboxFiles = readdirSync(join(hexRepo, 'inbox')).filter(f => f.endsWith('.md'));
+    const inboxFiles = readdirSync(join(mtContactCache, 'inbox')).filter(f => f.endsWith('.md'));
     expect(inboxFiles.length).toBe(1);
 
     // Same filename on both sides (one logical mail, two physical copies)
@@ -67,13 +87,13 @@ describe('send (mailbox model)', () => {
   });
 
   it('creates commits in BOTH sender and recipient repos', async () => {
-    const mtCommits1 = execSync(`git -C "${mtRepo}" log --oneline`, { encoding: 'utf-8' }).trim().split('\n').filter(Boolean);
-    const hexCommits1 = execSync(`git -C "${hexRepo}" log --oneline`, { encoding: 'utf-8' }).trim().split('\n').filter(Boolean);
+    const mtCommits1 = execSync(`git -C "${mtSelfRepo}" log --oneline`, { encoding: 'utf-8' }).trim().split('\n').filter(Boolean);
+    const hexCommits1 = execSync(`git -C "${mtContactCache}" log --oneline`, { encoding: 'utf-8' }).trim().split('\n').filter(Boolean);
 
-    await sendMessage({ from: 'mt', to: 'hex', subject: 'Test', bodyFile, configPath });
+    await sendMessage({ from: 'mt', to: 'hex', subject: 'Test', bodyFile, configPath, profile: 'mt' });
 
-    const mtCommits2 = execSync(`git -C "${mtRepo}" log --oneline`, { encoding: 'utf-8' }).trim().split('\n').filter(Boolean);
-    const hexCommits2 = execSync(`git -C "${hexRepo}" log --oneline`, { encoding: 'utf-8' }).trim().split('\n').filter(Boolean);
+    const mtCommits2 = execSync(`git -C "${mtSelfRepo}" log --oneline`, { encoding: 'utf-8' }).trim().split('\n').filter(Boolean);
+    const hexCommits2 = execSync(`git -C "${mtContactCache}" log --oneline`, { encoding: 'utf-8' }).trim().split('\n').filter(Boolean);
 
     // sender repo: 1 new commit
     expect(mtCommits2.length - mtCommits1.length).toBe(1);
@@ -86,23 +106,23 @@ describe('send (mailbox model)', () => {
   });
 
   it('commit on sender side contains outbox file', async () => {
-    await sendMessage({ from: 'mt', to: 'hex', subject: 'Test', bodyFile, configPath });
+    await sendMessage({ from: 'mt', to: 'hex', subject: 'Test', bodyFile, configPath, profile: 'mt' });
 
-    const diff = execSync(`git -C "${mtRepo}" diff HEAD~1 --name-only`, { encoding: 'utf-8' }).trim().split('\n').filter(Boolean);
+    const diff = execSync(`git -C "${mtSelfRepo}" diff HEAD~1 --name-only`, { encoding: 'utf-8' }).trim().split('\n').filter(Boolean);
     expect(diff.some(d => d.includes('outbox/'))).toBe(true);
   });
 
   it('commit on recipient side contains inbox file', async () => {
-    await sendMessage({ from: 'mt', to: 'hex', subject: 'Test', bodyFile, configPath });
+    await sendMessage({ from: 'mt', to: 'hex', subject: 'Test', bodyFile, configPath, profile: 'mt' });
 
-    const diff = execSync(`git -C "${hexRepo}" diff HEAD~1 --name-only`, { encoding: 'utf-8' }).trim().split('\n').filter(Boolean);
+    const diff = execSync(`git -C "${mtContactCache}" diff HEAD~1 --name-only`, { encoding: 'utf-8' }).trim().split('\n').filter(Boolean);
     expect(diff.some(d => d.includes('inbox/'))).toBe(true);
   });
 
   it('recipient inbox file has correct frontmatter', async () => {
-    const result = await sendMessage({ from: 'mt', to: 'hex', subject: 'Hello', bodyFile, configPath });
+    const result = await sendMessage({ from: 'mt', to: 'hex', subject: 'Hello', bodyFile, configPath, profile: 'mt' });
 
-    const inboxPath = join(hexRepo, 'inbox', result.filename);
+    const inboxPath = join(mtContactCache, 'inbox', result.filename);
     const content = readFileSync(inboxPath, 'utf-8');
 
     expect(content).toContain('from: mt');

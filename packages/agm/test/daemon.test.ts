@@ -4,30 +4,41 @@ import { mkdtempSync, rmSync } from 'fs';
 import { tmpdir } from 'os';
 import { join } from 'path';
 import { runDaemon } from '../src/app/run-daemon.js';
-import type { Config } from '../src/config/schema.js';
 
 describe('daemon', () => {
   const tmp = mkdtempSync(join(tmpdir(), 'agm-daemon-test-'));
   let repoPath: string;
 
   beforeEach(() => {
-    repoPath = join(tmp, `repo-${Date.now()}`);
-    execSync(
-      `mkdir ${repoPath} && cd ${repoPath} && git init && git config user.email "test@test.com" && git config user.name "test" && mkdir -p inbox && echo "initial" > f.txt && git add f.txt && git commit -m "init"`,
-      { encoding: 'utf-8' },
-    );
+    // Point AGM_BASE_DIR to the test temp dir so V3 path resolution finds our repo.
+    // V3: getSelfRepoPath('mt') → {AGM_BASE_DIR}/profiles/mt/self
+    process.env.AGM_BASE_DIR = tmp;
+
+    // Create a fresh repo at the V3-derived path for each test.
+    const v3RepoPath = join(tmp, 'profiles', 'mt', 'self');
+    rmSync(v3RepoPath, { recursive: true, force: true });
+    execSync(`mkdir -p "${v3RepoPath}" && git -C "${v3RepoPath}" init && git -C "${v3RepoPath}" config user.email 'test@test.com' && git -C "${v3RepoPath}" config user.name 'test' && mkdir -p "${v3RepoPath}/inbox" "${v3RepoPath}/outbox" "${v3RepoPath}/archive" && echo "initial" > "${v3RepoPath}/f.txt" && git -C "${v3RepoPath}" add f.txt && git -C "${v3RepoPath}" commit -m "init"`, { encoding: 'utf-8' });
+
+    // Update repoPath to the V3 path for test assertions
+    repoPath = v3RepoPath;
   });
 
   it('first start sets waterline without notifying', async () => {
-    const config: Config = {
-      agents: {
-        mt: { repo_path: repoPath },
-      },
+    const config = {
+      profiles: {
+        mt: {
+          self: { id: 'mt', remote_repo_url: 'https://github.com/test/mt.git' },
+          contacts: {},
+          notifications: { default_target: 'main', bind_session_key: null, forced_session_key: null },
+          runtime: { poll_interval_seconds: 30 },
+        }
+      }
     };
 
     const events: { agent: string; filename: string; from: string }[] = [];
     await runDaemon({
       config,
+      profile: 'mt',
       agentName: 'mt',
       onNewMail: async (mail) => { events.push(mail); },
     });
@@ -46,13 +57,21 @@ describe('daemon', () => {
       { encoding: 'utf-8' },
     );
 
-    const config: Config = {
-      agents: { mt: { repo_path: repoPath } },
+    const config = {
+      profiles: {
+        mt: {
+          self: { id: 'mt', remote_repo_url: 'https://github.com/test/mt.git' },
+          contacts: {},
+          notifications: { default_target: 'main', bind_session_key: null, forced_session_key: null },
+          runtime: { poll_interval_seconds: 30 },
+        }
+      }
     };
 
     const events: { agent: string; filename: string; from: string }[] = [];
     await runDaemon({
       config,
+      profile: 'mt',
       agentName: 'mt',
       onNewMail: async (mail) => { events.push(mail); },
     });

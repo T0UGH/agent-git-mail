@@ -1,10 +1,15 @@
 import { readdirSync } from 'fs';
 import { resolve } from 'path';
 import { parseFrontmatter } from '../domain/frontmatter.js';
-import { loadConfig, getAgentRepoPath, unknownAgentError } from '../config/index.js';
+import { loadConfig } from '../config/load.js';
+import { resolveProfile } from '../config/profile.js';
+import { getProfileSelfId, getProfileContactRemoteRepoUrl } from '../config/index.js';
+import { getSelfRepoPath, getContactCachePath } from '../config/profile-paths.js';
+import { refreshContactCache } from '../git/contact-cache.js';
 
 export interface ListOptions {
   agent: string;
+  profile: string;
   dir?: 'inbox' | 'outbox' | 'archive';
   format?: 'table' | 'json';
   configPath?: string;
@@ -22,9 +27,22 @@ export interface ListEntry {
 
 export async function listMessages(opts: ListOptions): Promise<ListEntry[]> {
   const config = loadConfig(opts.configPath);
+  const profile = resolveProfile(config, opts.profile);
+  const selfId = getProfileSelfId(profile);
 
-  const repoPath = getAgentRepoPath(config, opts.agent);
-  if (!repoPath) unknownAgentError(opts.agent, config);
+  const isSelf = opts.agent === selfId;
+  const repoPath = isSelf
+    ? getSelfRepoPath(opts.profile)
+    : getContactCachePath(opts.profile, opts.agent);
+  if (!repoPath) throw new Error(`Unknown agent: ${opts.agent}`);
+
+  // When reading from a contact's mailbox, refresh the cache to get latest
+  if (!isSelf) {
+    const contactRemoteUrl = getProfileContactRemoteRepoUrl(profile, opts.agent);
+    if (contactRemoteUrl) {
+      await refreshContactCache({ profile: opts.profile, contactId: opts.agent, remoteRepoUrl: contactRemoteUrl });
+    }
+  }
 
   const dir = opts.dir ?? 'inbox';
   const dirPath = resolve(repoPath, dir);

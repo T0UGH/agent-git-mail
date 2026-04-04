@@ -37,33 +37,49 @@ describe('activator config factory', () => {
     const { loadConfig } = await import('../src/config/index.js');
     const { createActivator } = await import('../src/activator/index.js');
     const configPath = writeConfig(`
-self:
-  id: mt
-  local_repo_path: /tmp/mt
-  remote_repo_url: https://github.com/T0UGH/mt-mailbox.git
+profiles:
+  mt:
+    self:
+      id: mt
+      remote_repo_url: https://github.com/T0UGH/mt-mailbox.git
+    contacts: {}
+    notifications:
+      default_target: main
+      bind_session_key: null
+      forced_session_key: null
+    runtime:
+      poll_interval_seconds: 30
 `);
     const config = loadConfig(configPath);
-    expect(createActivator(config)).toBeNull();
+    expect(createActivator(config, 'mt')).toBeNull();
   });
 
   it('createActivator returns a feishu-openclaw-agent when enabled', async () => {
     const { loadConfig } = await import('../src/config/index.js');
     const { createActivator } = await import('../src/activator/index.js');
     const configPath = writeConfig(`
-self:
-  id: mt
-  local_repo_path: /tmp/mt
-  remote_repo_url: https://github.com/T0UGH/mt-mailbox.git
-activation:
-  enabled: true
-  activator: feishu-openclaw-agent
-  dedupe_mode: filename
-  feishu:
-    open_id: ou_test123
-    message_template: "hello"
+profiles:
+  mt:
+    self:
+      id: mt
+      remote_repo_url: https://github.com/T0UGH/mt-mailbox.git
+    contacts: {}
+    notifications:
+      default_target: main
+      bind_session_key: null
+      forced_session_key: null
+    runtime:
+      poll_interval_seconds: 30
+    activation:
+      enabled: true
+      activator: feishu-openclaw-agent
+      dedupe_mode: filename
+      feishu:
+        open_id: ou_test123
+        message_template: "hello"
 `);
     const config = loadConfig(configPath);
-    const activator = createActivator(config);
+    const activator = createActivator(config, 'mt');
     expect(activator).not.toBeNull();
     expect(activator!.name).toBe('feishu-openclaw-agent');
   });
@@ -74,20 +90,28 @@ activation:
     const { execFileSync } = await import('child_process');
 
     const configPath = writeConfig(`
-self:
-  id: mt
-  local_repo_path: /tmp/mt
-  remote_repo_url: https://github.com/T0UGH/mt-mailbox.git
-activation:
-  enabled: true
-  activator: feishu-openclaw-agent
-  dedupe_mode: filename
-  feishu:
-    open_id: ou_abc456
-    message_template: "FILE: {{filename}}"
+profiles:
+  mt:
+    self:
+      id: mt
+      remote_repo_url: https://github.com/T0UGH/mt-mailbox.git
+    contacts: {}
+    notifications:
+      default_target: main
+      bind_session_key: null
+      forced_session_key: null
+    runtime:
+      poll_interval_seconds: 30
+    activation:
+      enabled: true
+      activator: feishu-openclaw-agent
+      dedupe_mode: filename
+      feishu:
+        open_id: ou_abc456
+        message_template: "FILE: {{filename}}"
 `);
     const config = loadConfig(configPath);
-    const activator = createActivator(config)!;
+    const activator = createActivator(config, 'mt')!;
 
     await activator.activate({
       selfId: 'mt',
@@ -109,20 +133,28 @@ activation:
     const { execFileSync } = await import('child_process');
 
     const configPath = writeConfig(`
-self:
-  id: mt
-  local_repo_path: /tmp/mt
-  remote_repo_url: https://github.com/T0UGH/mt-mailbox.git
-activation:
-  enabled: true
-  activator: feishu-openclaw-agent
-  dedupe_mode: filename
-  feishu:
-    open_id: ou_xyz
-    message_template: "CUSTOM: {{filename}} from {{from}}"
+profiles:
+  mt:
+    self:
+      id: mt
+      remote_repo_url: https://github.com/T0UGH/mt-mailbox.git
+    contacts: {}
+    notifications:
+      default_target: main
+      bind_session_key: null
+      forced_session_key: null
+    runtime:
+      poll_interval_seconds: 30
+    activation:
+      enabled: true
+      activator: feishu-openclaw-agent
+      dedupe_mode: filename
+      feishu:
+        open_id: ou_xyz
+        message_template: "CUSTOM: {{filename}} from {{from}}"
 `);
     const config = loadConfig(configPath);
-    const activator = createActivator(config)!;
+    const activator = createActivator(config, 'mt')!;
 
     await activator.activate({
       selfId: 'mt',
@@ -141,16 +173,24 @@ activation:
   it('loadConfig rejects config missing feishu.open_id (schema validation)', async () => {
     const { loadConfig } = await import('../src/config/index.js');
     const configPath = writeConfig(`
-self:
-  id: mt
-  local_repo_path: /tmp/mt
-  remote_repo_url: https://github.com/T0UGH/mt-mailbox.git
-activation:
-  enabled: true
-  activator: feishu-openclaw-agent
-  dedupe_mode: filename
-  feishu:
-    message_template: "hello"
+profiles:
+  mt:
+    self:
+      id: mt
+      remote_repo_url: https://github.com/T0UGH/mt-mailbox.git
+    contacts: {}
+    notifications:
+      default_target: main
+      bind_session_key: null
+      forced_session_key: null
+    runtime:
+      poll_interval_seconds: 30
+    activation:
+      enabled: true
+      activator: feishu-openclaw-agent
+      dedupe_mode: filename
+      feishu:
+        message_template: "hello"
 `);
     // Schema validation fails at loadConfig — open_id is required
     expect(() => loadConfig(configPath)).toThrow();

@@ -11,8 +11,8 @@
 
 import { parseEvents } from '../../log/events.js';
 import { existsSync } from 'fs';
-import { getEventsPath } from '../../config/paths.js';
-import type { EventType, EventLevel } from '../../log/event-types.js';
+import { getEventsPath } from '../../config/profile-paths.js';
+import type { EventType } from '../../log/event-types.js';
 
 const EVENT_TYPES = [
   'daemon_poll_started',
@@ -38,6 +38,8 @@ export async function cmdLog(argv: Record<string, unknown>): Promise<void> {
   const typeArg = String(argv['type'] ?? '');
   const json = argv['json'] === true;
 
+  const profile = String(argv['profile']);
+
   // Validate type filter
   const types: EventType[] = [];
   if (typeArg) {
@@ -60,7 +62,7 @@ export async function cmdLog(argv: Record<string, unknown>): Promise<void> {
   }
 
   // Check if events file exists
-  if (!existsSync(getEventsPath())) {
+  if (!existsSync(getEventsPath(profile))) {
     if (json) {
       // No output for --json when empty
     } else {
@@ -69,7 +71,7 @@ export async function cmdLog(argv: Record<string, unknown>): Promise<void> {
     return;
   }
 
-  const events = parseEvents({ limit: tail, since, types });
+  const events = parseEvents({ limit: tail, since, types }, profile);
 
   if (json) {
     // Output raw JSON lines

@@ -4,7 +4,10 @@ import { GitRepo } from '../git/repo.js';
 import { generateFilename, generateUniqueSuffix } from '../domain/filename.js';
 import { serializeFrontmatter, type MessageFrontmatter } from '../domain/frontmatter.js';
 import { loadConfig } from '../config/load.js';
-import { getAgentRepoPath, getContactRemoteRepoUrl, unknownAgentError, isConfigV2 } from '../config/index.js';
+import { resolveProfile } from '../config/profile.js';
+import { getProfileSelfId, getProfileContactRemoteRepoUrl } from '../config/index.js';
+import { getSelfRepoPath, getContactCachePath } from '../config/profile-paths.js';
+import { ensureContactCache } from '../git/contact-cache.js';
 import { maybePush } from './git-push.js';
 import { ensureGitIdentity, ensureMaildirs } from '../git/preflight.js';
 
@@ -15,6 +18,7 @@ export interface SendOptions {
   bodyFile: string;
   replyTo?: string;
   expectsReply?: boolean;
+  profile: string;
   configPath?: string;
 }
 
@@ -25,32 +29,23 @@ export interface SendOptions {
  */
 export async function sendMessage(opts: SendOptions): Promise<{ filename: string }> {
   const config = loadConfig(opts.configPath);
+  const profile = resolveProfile(config, opts.profile);
+  const selfId = getProfileSelfId(profile);
 
-  const senderRepoPath = getAgentRepoPath(config, opts.from);
-  if (!senderRepoPath) unknownAgentError(opts.from, config);
+  // Sender repo = self repo (sender IS the profile owner)
+  const senderRepoPath = getSelfRepoPath(opts.from);
+  // Recipient repo = sender's contact cache of recipient
+  const recipientRepoPath = getContactCachePath(opts.profile, opts.to);
 
-  const recipientRepoPath = getAgentRepoPath(config, opts.to);
-  if (!recipientRepoPath) unknownAgentError(opts.to, config);
-
-  // Verify recipient is known
-  // v2: contacts have remote URLs; recipient must also have local path for dual-write
-  // legacy v0/v1: use getAgentRepoPath which works for agents map
-  if (isConfigV2(config)) {
-    if (!getContactRemoteRepoUrl(config, opts.to)) {
-      unknownAgentError(opts.to, config);
-    }
-    // For v2 dual-write, recipient must have a local repo path configured
-    if (!recipientRepoPath) {
-      throw new Error(`Recipient ${opts.to} has no local repo path. ` +
-        `Add "repo_path" to contacts.${opts.to} in config for dual-write delivery.`);
-    }
-  } else {
-    if (!getAgentRepoPath(config, opts.to)) {
-      unknownAgentError(opts.to, config);
-    }
+  // Verify recipient is known (V3: check contacts have remote URLs)
+  const contactRemoteUrl = getProfileContactRemoteRepoUrl(profile, opts.to);
+  if (!contactRemoteUrl) {
+    throw new Error(`Unknown recipient: ${opts.to}`);
   }
 
-  const selfId = (config as { self?: { id?: string } }).self?.id;
+  // Ensure recipient's mailbox is available (validates remote URL, clones if needed)
+  await ensureContactCache({ profile: opts.profile, contactId: opts.to, remoteRepoUrl: contactRemoteUrl });
+
   if (opts.to === selfId) {
     throw new Error(`Cannot send to yourself (${opts.to})`);
   }

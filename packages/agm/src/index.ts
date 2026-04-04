@@ -13,17 +13,19 @@ import { cmdArchive } from './cli/commands/archive.js';
 import { cmdBootstrap } from './cli/commands/bootstrap.js';
 
 const subcommands: Record<string, (argv: Record<string, unknown>) => Promise<void>> = {
-  config: async () => {
+  config: async (argv) => {
+    // profile is guaranteed to exist here (enforced by main() profile check)
+    const profile = String(argv['profile']);
     const args = process.argv.slice(3);
     if (args[0] === 'show') {
-      await cmdConfigShow();
+      await cmdConfigShow(profile);
     } else if (args[0] === 'get') {
-      await cmdConfigGet(args[1] ?? '');
+      await cmdConfigGet(profile, args[1] ?? '');
     } else if (args[0] === 'set') {
       const { cmdConfigSet } = await import('./cli/commands/config.js');
-      await cmdConfigSet(args[1] ?? '', args[2] ?? '');
+      await cmdConfigSet(profile, args[1] ?? '', args[2] ?? '');
     } else {
-      await cmdConfigShow();
+      await cmdConfigShow(profile);
     }
   },
   send: async (argv) => {
@@ -44,10 +46,13 @@ const subcommands: Record<string, (argv: Record<string, unknown>) => Promise<voi
   daemon: async (argv) => {
     const { runDaemon } = await import('./app/run-daemon.js');
     const { loadConfig } = await import('./config/load.js');
+    const { requireProfile } = await import('./config/profile.js');
     const config = loadConfig();
+    const profile = requireProfile(argv['profile'] as string | undefined);
     const once = argv['once'] === true;
     await runDaemon({
       config,
+      profile,
       // Pass a no-op onNewMail to trigger one-shot mode
       ...(once ? { onNewMail: async () => {} } : {}),
     });
@@ -60,14 +65,12 @@ const subcommands: Record<string, (argv: Record<string, unknown>) => Promise<voi
   },
   bootstrap: async (argv) => {
     const opts = {
-      selfId: String(argv['selfId'] ?? ''),
-      selfRemoteRepoUrl: String(argv['selfRemoteRepoUrl'] ?? ''),
-      selfLocalRepoPath: String(argv['selfLocalRepoPath'] ?? ''),
+      selfId: argv['selfId'] ? String(argv['selfId']) : undefined,
+      selfRemoteRepoUrl: argv['selfRemoteRepoUrl'] ? String(argv['selfRemoteRepoUrl']) : undefined,
+      selfLocalRepoPath: argv['selfLocalRepoPath'] ? String(argv['selfLocalRepoPath']) : undefined,
+      profile: String(argv['profile'] ?? ''),
       configPath: argv['configPath'] ? String(argv['configPath']) : undefined,
       activationOpenId: argv['activationOpenId'] ? String(argv['activationOpenId']) : undefined,
-      activationPollIntervalSeconds: argv['activationPollIntervalSeconds']
-        ? Number(argv['activationPollIntervalSeconds'])
-        : undefined,
       dryRun: argv['dryRun'] === true,
       json: argv['json'] === true,
     };
@@ -111,7 +114,14 @@ export function parseArgv(args: string[]): { subcommand: string; argv: Record<st
       }
     } else if (arg.startsWith('-')) {
       const key = toCamelCase(arg.slice(1));
-      argv[key] = true;
+      // Short option: -p <value> style (e.g. -p mt)
+      const next = args[i + 1];
+      if (next && !next.startsWith('--') && !next.startsWith('-')) {
+        argv[key] = next;
+        i++;
+      } else {
+        argv[key] = true;
+      }
     } else {
       positional.push(arg);
     }
@@ -137,6 +147,28 @@ async function main() {
     return;
   }
 
+  // Normalize -p to --profile (parseArgv stores it under 'p' key)
+  argv['profile'] ??= argv['p'] as string | undefined;
+
+  // Subcommands that require a profile argument
+  const profileSubcommands = ['send', 'reply', 'read', 'list', 'archive', 'doctor', 'log', 'daemon', 'bootstrap', 'config'];
+  if (profileSubcommands.includes(subcommand)) {
+    const { loadConfig } = await import('./config/load.js');
+    const { requireProfile } = await import('./config/profile.js');
+    const config = loadConfig();
+    // Throws if profile is missing
+    requireProfile(argv['profile'] as string | undefined);
+    // Also validate profile exists in config
+    const { hasProfile } = await import('./config/profile.js');
+    if (!hasProfile(config, argv['profile'] as string)) {
+      const { getProfileNames } = await import('./config/profile.js');
+      const names = getProfileNames(config);
+      const avail = names.length > 0 ? `\nAvailable profiles: ${names.join(', ')}` : '\nNo profiles found in config.';
+      console.error(`Unknown profile: ${argv['profile']}${avail}`);
+      process.exit(1);
+    }
+  }
+
   const handler = subcommands[subcommand];
   if (!handler) {
     console.error(`Unknown subcommand: ${subcommand}`);
@@ -160,32 +192,39 @@ Usage:
   agm <subcommand> [options]
 
 Subcommands:
-  config [show|get|set]    Show, get, or set config values
-  send --from <a> --to <b> --subject <s> --body-file <f>
-  reply <filename.md> --from <a> --body-file <f>
-  read <filename.md> --agent <a> [--dir inbox|outbox|archive]
-  list --agent <a> [--dir inbox|outbox|archive] [--format table|json]
-  archive <filename.md> --agent <a>
-  daemon [--once]          Run the mail daemon (use --once for single poll)
-  doctor [config|git|...]  Run health checks (default: all groups)
-  log [--tail <n>] [--since <duration>] [--type <type>] [--json]
+  config [show|get|set]    Show, get, or set profile-scoped config values
+  send --profile <name> --from <a> --to <b> --subject <s> --body-file <f>
+  reply --profile <name> <filename.md> --from <a> --body-file <f>
+  read --profile <name> <filename.md> --agent <a> [--dir inbox|outbox|archive]
+  list --profile <name> --agent <a> [--dir inbox|outbox|archive] [--format table|json]
+  archive --profile <name> <filename.md> --agent <a>
+  daemon --profile <name> [--once]
+  doctor --profile <name> [config|git|...]  Run health checks (default: all groups)
+  log --profile <name> [--tail <n>] [--since <duration>] [--type <type>] [--json]
                             Show structured event log
   bootstrap                Bootstrap AGM (self + daemon + external activator)
 
+Profile options:
+  --profile, -p <name>      Required. Profile name (e.g. mt, hex)
+
 Bootstrap options:
-  --self-id <id>                      Required. Your agent / user ID.
-  --self-remote-repo-url <url>        Required. Remote git repo URL (e.g. https://github.com/USER/mailbox.git).
-  --self-local-repo-path <path>        Required. Local path where the repo will be cloned / already exists.
+  --self-id <id>                      Optional. Your agent / user ID (defaults to profile name).
+  --self-remote-repo-url <url>        Optional. Remote git repo URL.
+  --self-local-repo-path <path>       Optional. Local repo path (auto-derived from profile if omitted).
   --config-path <path>                 Optional. Custom config path.
   --activation-open-id <openId>       Optional. Feishu open_id for external activation.
   --dry-run                           Optional. Print what would be done without writing.
   --json                              Optional. Output machine-readable JSON.
 
 Examples:
-  agm config show
-  agm bootstrap --self-id atlas --self-remote-repo-url https://github.com/T0UGH/test-mailbox-a.git --self-local-repo-path /workspace/mailbox/atlas
-  agm bootstrap --self-id boron --self-remote-repo-url https://github.com/T0UGH/test-mailbox-b.git --self-local-repo-path /workspace/mailbox/boron --dry-run
-  agm bootstrap --self-id atlas --self-remote-repo-url https://github.com/T0UGH/test-mailbox-a.git --self-local-repo-path /workspace/mailbox/atlas --activation-open-id ou_xxx
+  agm --profile mt config show
+  agm --profile mt config get runtime.poll_interval_seconds
+  agm --profile mt config set runtime.poll_interval_seconds 60
+  agm --profile mt send --from mt --to hex --subject "Hello" --body-file /tmp/body.md
+  agm --profile hex daemon
+  agm --profile mt doctor
+  agm --profile mt bootstrap
+  agm --profile mt bootstrap --self-remote-repo-url https://github.com/USER/mailbox.git
 `);
 }
 

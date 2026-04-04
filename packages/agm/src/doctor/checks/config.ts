@@ -5,11 +5,12 @@
 
 import { loadConfigSafe } from '../../config/load.js';
 import { getConfigPath } from '../../config/paths.js';
-import { isConfigV2 } from '../../config/schema.js';
+import { resolveProfile } from '../../config/profile.js';
+import { getProfileSelfId, getProfileSelfRemoteRepoUrl } from '../../config/index.js';
 import type { CheckResult } from '../types.js';
 import { existsSync } from 'fs';
 
-export function checkConfig(): CheckResult[] {
+export function checkConfig(profileName: string): CheckResult[] {
   const results: CheckResult[] = [];
 
   // Check: config file exists
@@ -52,19 +53,30 @@ export function checkConfig(): CheckResult[] {
 
   const config = loadResult.data;
 
-  // Doctor checks are designed for v2 config format
-  if (!isConfigV2(config)) {
+  // Check: profile exists
+  let profile;
+  try {
+    profile = resolveProfile(config, profileName);
+  } catch {
     results.push({
-      name: 'config_format',
+      name: 'config_profile',
       status: 'FAIL',
-      code: 'CONFIG_NOT_V2',
-      message: 'doctor checks require v2 config format (self.remote_repo_url)',
+      code: 'PROFILE_NOT_FOUND',
+      message: `profile '${profileName}' not found in config`,
     });
     return results;
   }
 
+  results.push({
+    name: 'config_profile',
+    status: 'OK',
+    code: 'OK',
+    message: `profile '${profileName}' found`,
+  });
+
   // Check: self.id
-  if (!config.self?.id) {
+  const selfId = getProfileSelfId(profile);
+  if (!selfId) {
     results.push({
       name: 'self_id',
       status: 'FAIL',
@@ -76,29 +88,13 @@ export function checkConfig(): CheckResult[] {
       name: 'self_id',
       status: 'OK',
       code: 'OK',
-      message: `self.id = ${config.self.id}`,
-    });
-  }
-
-  // Check: self.local_repo_path
-  if (!config.self?.local_repo_path) {
-    results.push({
-      name: 'self_local_repo_path',
-      status: 'FAIL',
-      code: 'SELF_REPO_PATH_MISSING',
-      message: 'self.local_repo_path is required',
-    });
-  } else {
-    results.push({
-      name: 'self_local_repo_path',
-      status: 'OK',
-      code: 'OK',
-      message: `self.local_repo_path = ${config.self.local_repo_path}`,
+      message: `self.id = ${selfId}`,
     });
   }
 
   // Check: self.remote_repo_url
-  if (!config.self?.remote_repo_url) {
+  const selfRemoteUrl = getProfileSelfRemoteRepoUrl(profile);
+  if (!selfRemoteUrl) {
     results.push({
       name: 'self_remote_repo_url',
       status: 'FAIL',
@@ -110,12 +106,12 @@ export function checkConfig(): CheckResult[] {
       name: 'self_remote_repo_url',
       status: 'OK',
       code: 'OK',
-      message: `self.remote_repo_url = ${config.self.remote_repo_url}`,
+      message: `self.remote_repo_url = ${selfRemoteUrl}`,
     });
   }
 
   // Check: activation config completeness (if present)
-  const act = (config as any).activation;
+  const act = profile.activation;
   if (act?.enabled) {
     if (!act.feishu?.open_id) {
       results.push({

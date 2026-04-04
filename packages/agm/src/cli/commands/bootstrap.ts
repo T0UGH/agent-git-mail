@@ -1,8 +1,12 @@
-import { existsSync, mkdirSync, writeFileSync } from 'fs';
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'fs';
 import { execSync } from 'child_process';
 import { dirname } from 'path';
 import { stringify as stringifyYaml } from 'yaml';
-import { loadConfigSafe, isConfigV2, isConfigV1, getConfigPath, type ConfigV2 } from '../../config/index.js';
+import { loadConfigSafe } from '../../config/load.js';
+import { getConfigPath } from '../../config/paths.js';
+import { resolveProfile, hasProfile } from '../../config/profile.js';
+import { getProfileSelfId } from '../../config/index.js';
+import { getSelfRepoPath } from '../../config/profile-paths.js';
 
 // --- Exit codes ---
 export const EXIT_INPUT_ERROR = 2;
@@ -12,9 +16,10 @@ export const EXIT_CONFIG_CONFLICT = 6;
 export const EXIT_REMOTE_MISMATCH = 7;
 
 export interface BootstrapOptions {
-  selfId: string;
-  selfRemoteRepoUrl: string;
-  selfLocalRepoPath: string;
+  selfId?: string;
+  selfRemoteRepoUrl?: string;
+  selfLocalRepoPath?: string;
+  profile: string;
   configPath?: string;
   activationOpenId?: string;
   dryRun?: boolean;
@@ -145,28 +150,37 @@ function ensureMaildirs(repoPath: string): void {
   }
 }
 
-function checkConfigConflict(configPath: string, newSelfId: string, newRemoteUrl: string): CheckResult | null {
+function checkConfigConflict(configPath: string, profileName: string, newSelfId: string, newRemoteUrl: string): CheckResult | null {
   const result = loadConfigSafe(configPath);
   if (!result.ok) return null;
   const existing = result.data;
 
-  if (isConfigV2(existing)) {
-    if (existing.self.id !== newSelfId) {
+  // Only check conflict if profile already exists
+  if (!hasProfile(existing, profileName)) {
+    return null; // New profile, no conflict
+  }
+
+  try {
+    const profile = resolveProfile(existing, profileName);
+    const existingSelfId = getProfileSelfId(profile);
+    if (existingSelfId !== newSelfId) {
       return {
         ok: false,
         code: EXIT_CONFIG_CONFLICT,
         status: 'conflict',
-        message: `Config conflict: existing self.id='${existing.self.id}' does not match --self-id='${newSelfId}'`,
-        details: { existingSelfId: existing.self.id, requestedSelfId: newSelfId },
+        message: `Config conflict: existing self.id='${existingSelfId}' does not match --self-id='${newSelfId}'`,
+        details: { existingSelfId, requestedSelfId: newSelfId },
       };
     }
-    if (existing.self.remote_repo_url !== newRemoteUrl) {
+    // Check remote URL matches
+    const existingRemote = profile.self.remote_repo_url;
+    if (existingRemote !== newRemoteUrl) {
       return {
         ok: false,
         code: EXIT_CONFIG_CONFLICT,
         status: 'conflict',
-        message: `Config conflict: existing remote_repo_url='${existing.self.remote_repo_url}' does not match --self-remote-repo-url='${newRemoteUrl}'`,
-        details: { existingRemote: existing.self.remote_repo_url, requestedRemote: newRemoteUrl },
+        message: `Config conflict: existing remote_repo_url='${existingRemote}' does not match --self-remote-repo-url='${newRemoteUrl}'`,
+        details: { existingRemote, requestedRemote: newRemoteUrl },
       };
     }
     return {
@@ -174,28 +188,33 @@ function checkConfigConflict(configPath: string, newSelfId: string, newRemoteUrl
       code: 0,
       status: 'already_initialized',
       message: 'AGM already initialized with matching self.id and remote_repo_url',
-      details: { existingSelfId: existing.self.id, existingRemote: existing.self.remote_repo_url, existingLocal: existing.self.local_repo_path },
+      details: { existingSelfId, existingRemote },
     };
-  }
-
-  if (isConfigV1(existing)) {
-    // Legacy config — warn but allow re-bootstrap
+  } catch {
+    // Should not reach here since we checked hasProfile above
     return null;
   }
-
-  return null;
 }
 
 function buildConfigYaml(
+  existingConfig: Record<string, unknown> | null,
+  profileName: string,
   selfId: string,
   selfRemoteUrl: string,
-  selfLocalPath: string,
   activationOpenId?: string,
 ): string {
-  const config: ConfigV2 = {
+  // Start with existing config or empty structure
+  const config: Record<string, unknown> = existingConfig ? { ...existingConfig } : {};
+
+  // Ensure profiles object exists
+  if (!config.profiles || typeof config.profiles !== 'object') {
+    config.profiles = {};
+  }
+
+  // Build new profile entry
+  const newProfile: Record<string, unknown> = {
     self: {
       id: selfId,
-      local_repo_path: selfLocalPath,
       remote_repo_url: selfRemoteUrl,
     },
     contacts: {},
@@ -208,8 +227,9 @@ function buildConfigYaml(
       poll_interval_seconds: 30,
     },
   };
+
   if (activationOpenId) {
-    (config as any).activation = {
+    newProfile.activation = {
       enabled: true,
       activator: 'feishu-openclaw-agent',
       dedupe_mode: 'filename',
@@ -220,6 +240,10 @@ function buildConfigYaml(
       },
     };
   }
+
+  // Merge: keep existing profiles, overwrite only the target profile
+  (config.profiles as Record<string, unknown>)[profileName] = newProfile;
+
   return stringifyYaml(config, { indent: 2 });
 }
 
@@ -244,30 +268,40 @@ function outputText(result: CheckResult & { details?: Record<string, unknown> })
 }
 
 export async function cmdBootstrap(argv: BootstrapOptions): Promise<void> {
-  const { selfId, selfRemoteRepoUrl, selfLocalRepoPath, configPath, activationOpenId, dryRun, json } = argv;
+  const { selfId: providedSelfId, selfRemoteRepoUrl, selfLocalRepoPath: providedLocalRepoPath, profile, configPath, activationOpenId, dryRun, json } = argv;
 
   const targetConfigPath = configPath ?? getConfigPath();
+
+  // Derive selfId from profile if not provided
+  const effectiveSelfId = providedSelfId?.trim() || profile;
+
+  // Derive local repo path from profile (V3: ~/.agm/profiles/<profile>/self)
+  const effectiveLocalRepoPath = providedLocalRepoPath?.trim() || getSelfRepoPath(profile);
 
   // 1. Check system deps
   const depCheck = checkSystemDeps();
   if (!depCheck.ok) {
-    if (json) outputJson({ ...depCheck, configPath: targetConfigPath, selfId, selfRemoteUrl: selfRemoteRepoUrl, selfLocalRepoPath });
+    if (json) outputJson({ ...depCheck, configPath: targetConfigPath, selfId: effectiveSelfId, selfRemoteUrl: selfRemoteRepoUrl, selfLocalRepoPath: effectiveLocalRepoPath });
     else outputText(depCheck);
     process.exit(depCheck.code);
   }
 
   // 2. Validate required args
-  if (!selfId || selfId.trim().length === 0) {
+  if (!profile || profile.trim().length === 0) {
     const result: CheckResult = {
       ok: false,
       code: EXIT_INPUT_ERROR,
       status: 'invalid_input',
-      message: '--self-id is required and cannot be empty',
-      details: { selfId: selfId ?? '(empty)' },
+      message: '--profile is required and cannot be empty',
+      details: { profile: profile ?? '(empty)' },
     };
-    if (json) outputJson({ ...result, configPath: targetConfigPath, selfId, selfRemoteUrl: selfRemoteRepoUrl, selfLocalRepoPath });
+    if (json) outputJson({ ...result, configPath: targetConfigPath, selfId: effectiveSelfId, selfRemoteUrl: selfRemoteRepoUrl, selfLocalRepoPath: effectiveLocalRepoPath });
     else outputText(result);
     process.exit(EXIT_INPUT_ERROR);
+  }
+  if (providedSelfId && providedSelfId.trim() !== profile && providedSelfId.trim() !== effectiveSelfId) {
+    // User provided a selfId that differs from profile — warn but proceed
+    // (V3 requires self.id === profile name, but we allow override for migration)
   }
   if (!selfRemoteRepoUrl || selfRemoteRepoUrl.trim().length === 0) {
     const result: CheckResult = {
@@ -277,33 +311,25 @@ export async function cmdBootstrap(argv: BootstrapOptions): Promise<void> {
       message: '--self-remote-repo-url is required and cannot be empty',
       details: { selfRemoteRepoUrl: selfRemoteRepoUrl ?? '(empty)' },
     };
-    if (json) outputJson({ ...result, configPath: targetConfigPath, selfId, selfRemoteUrl: selfRemoteRepoUrl, selfLocalRepoPath });
-    else outputText(result);
-    process.exit(EXIT_INPUT_ERROR);
-  }
-  if (!selfLocalRepoPath || selfLocalRepoPath.trim().length === 0) {
-    const result: CheckResult = {
-      ok: false,
-      code: EXIT_INPUT_ERROR,
-      status: 'invalid_input',
-      message: '--self-local-repo-path is required and cannot be empty',
-      details: { selfLocalRepoPath: selfLocalRepoPath ?? '(empty)' },
-    };
-    if (json) outputJson({ ...result, configPath: targetConfigPath, selfId, selfRemoteUrl: selfRemoteRepoUrl, selfLocalRepoPath });
+    if (json) outputJson({ ...result, configPath: targetConfigPath, selfId: effectiveSelfId, selfRemoteUrl: selfRemoteRepoUrl, selfLocalRepoPath: effectiveLocalRepoPath });
     else outputText(result);
     process.exit(EXIT_INPUT_ERROR);
   }
 
+  // Load existing config (for merge)
+  const existingConfigResult = loadConfigSafe(targetConfigPath);
+  const existingConfig: Record<string, unknown> | null = existingConfigResult.ok ? existingConfigResult.data as Record<string, unknown> : null;
+
   // 3. Dry-run (check early to avoid side effects)
   if (dryRun) {
-    const configYaml = buildConfigYaml(selfId, selfRemoteRepoUrl, selfLocalRepoPath, activationOpenId);
+    const configYaml = buildConfigYaml(existingConfig, profile, effectiveSelfId, selfRemoteRepoUrl, activationOpenId);
     // Determine what clone would do without actually cloning
     let cloneAction: string;
-    if (!existsSync(selfLocalRepoPath)) {
+    if (!existsSync(effectiveLocalRepoPath)) {
       cloneAction = 'git clone (remote exists, local missing)';
     } else {
       try {
-        execSync('git rev-parse --git-dir', { cwd: selfLocalRepoPath, stdio: 'pipe' });
+        execSync('git rev-parse --git-dir', { cwd: effectiveLocalRepoPath, stdio: 'pipe' });
         cloneAction = 'reuse existing clone (origin verified on write)';
       } catch {
         cloneAction = 'git clone (not a git repo, would re-clone)';
@@ -317,23 +343,25 @@ export async function cmdBootstrap(argv: BootstrapOptions): Promise<void> {
       details: {
         configPath: targetConfigPath,
         cloneAction,
-        selfId,
+        profile,
+        selfId: effectiveSelfId,
         selfRemoteUrl: selfRemoteRepoUrl,
-        selfLocalRepoPath,
+        selfLocalRepoPath: effectiveLocalRepoPath,
         activation: activationOpenId
           ? { open_id: activationOpenId }
           : null,
         configContent: configYaml,
       },
     };
-    if (json) outputJson({ ...result, configPath: targetConfigPath, selfId, selfRemoteUrl: selfRemoteRepoUrl, selfLocalRepoPath });
+    if (json) outputJson({ ...result, configPath: targetConfigPath, selfId: effectiveSelfId, selfRemoteUrl: selfRemoteRepoUrl, selfLocalRepoPath: effectiveLocalRepoPath });
     else {
       console.log('🔍 Dry-run — would do the following:\n');
       console.log(`   Config path: ${targetConfigPath}`);
       console.log(`   Clone action: ${cloneAction}`);
-      console.log(`   Self ID: ${selfId}`);
+      console.log(`   Profile: ${profile}`);
+      console.log(`   Self ID: ${effectiveSelfId}`);
       console.log(`   Remote URL: ${selfRemoteRepoUrl}`);
-      console.log(`   Local path: ${selfLocalRepoPath}`);
+      console.log(`   Local path: ${effectiveLocalRepoPath}`);
       if (activationOpenId) {
         console.log(`   Activation: enabled (open_id=${activationOpenId})`);
       } else {
@@ -346,24 +374,24 @@ export async function cmdBootstrap(argv: BootstrapOptions): Promise<void> {
   }
 
   // 4. Clone or open local repo
-  const cloneResult = cloneOrOpenRepo(selfLocalRepoPath, selfRemoteRepoUrl);
+  const cloneResult = cloneOrOpenRepo(effectiveLocalRepoPath, selfRemoteRepoUrl);
   if (!cloneResult.ok) {
-    if (json) outputJson({ ...cloneResult, configPath: targetConfigPath, selfId, selfRemoteUrl: selfRemoteRepoUrl, selfLocalRepoPath });
+    if (json) outputJson({ ...cloneResult, configPath: targetConfigPath, selfId: effectiveSelfId, selfRemoteUrl: selfRemoteRepoUrl, selfLocalRepoPath: effectiveLocalRepoPath });
     else outputText(cloneResult);
     process.exit(cloneResult.code);
   }
 
   // 5. Check for config conflict
-  const conflictCheck = checkConfigConflict(targetConfigPath, selfId, selfRemoteRepoUrl);
+  const conflictCheck = checkConfigConflict(targetConfigPath, profile, effectiveSelfId, selfRemoteRepoUrl);
   if (conflictCheck) {
-    if (json) outputJson({ ...conflictCheck, configPath: targetConfigPath, selfId, selfRemoteUrl: selfRemoteRepoUrl, selfLocalRepoPath });
+    if (json) outputJson({ ...conflictCheck, configPath: targetConfigPath, selfId: effectiveSelfId, selfRemoteUrl: selfRemoteRepoUrl, selfLocalRepoPath: effectiveLocalRepoPath });
     else outputText(conflictCheck);
     process.exit(conflictCheck.code);
   }
 
-  // 6. Write config
+  // 6. Write config (merged with existing)
   mkdirSync(dirname(targetConfigPath), { recursive: true });
-  const configYaml = buildConfigYaml(selfId, selfRemoteRepoUrl, selfLocalRepoPath, activationOpenId);
+  const configYaml = buildConfigYaml(existingConfig, profile, effectiveSelfId, selfRemoteRepoUrl, activationOpenId);
   writeFileSync(targetConfigPath, configYaml, 'utf-8');
 
   const result: CheckResult & { configPath: string; selfId: string; selfRemoteUrl: string; selfLocalRepoPath: string } = {
@@ -372,28 +400,30 @@ export async function cmdBootstrap(argv: BootstrapOptions): Promise<void> {
     status: 'initialized',
     message: 'Bootstrap complete — AGM initialized',
     configPath: targetConfigPath,
-    selfId,
+    selfId: effectiveSelfId,
     selfRemoteUrl: selfRemoteRepoUrl,
-    selfLocalRepoPath,
+    selfLocalRepoPath: effectiveLocalRepoPath,
     details: {
       cloneAction: cloneResult.status,
+      profile,
       defaultTarget: 'main',
     },
   };
-  if (json) outputJson({ ...result, configPath: targetConfigPath, selfId, selfRemoteUrl: selfRemoteRepoUrl, selfLocalRepoPath });
+  if (json) outputJson({ ...result, configPath: targetConfigPath, selfId: effectiveSelfId, selfRemoteUrl: selfRemoteRepoUrl, selfLocalRepoPath: effectiveLocalRepoPath });
   else {
     console.log('✅ Bootstrap complete');
     console.log(`   Config: ${targetConfigPath}`);
     console.log(`   Clone: ${cloneResult.status}`);
-    console.log(`   Self ID: ${selfId}`);
+    console.log(`   Profile: ${profile}`);
+    console.log(`   Self ID: ${effectiveSelfId}`);
     console.log(`   Remote: ${selfRemoteRepoUrl}`);
-    console.log(`   Local: ${selfLocalRepoPath}`);
+    console.log(`   Local: ${effectiveLocalRepoPath}`);
     if (activationOpenId) {
       console.log(`   Activation: enabled (open_id=${activationOpenId})`);
     } else {
       console.log(`   Activation: not configured`);
     }
-    console.log(`\n   Next: run 'agm daemon' to start the mail daemon.`);
+    console.log(`\n   Next: run 'agm --profile ${profile} daemon' to start the mail daemon.`);
     if (activationOpenId) {
       console.log(`   The daemon will wake your agent via Feishu when new mail arrives.`);
     } else {

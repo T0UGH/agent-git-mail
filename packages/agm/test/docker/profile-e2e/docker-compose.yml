@@ -1,0 +1,39 @@
+services:
+  fake-ingress:
+    build:
+      context: /Users/wangguiping/workspace/agent-git-mail
+      dockerfile: packages/agm/test/docker/profile-e2e/fake-ingress/Dockerfile
+    ports:
+      - "3099:3099"
+    environment:
+      - INGRESS_MODE=${INGRESS_MODE:-success}
+      - PORT=3099
+    volumes:
+      - ingress-data:/tmp/fake-ingress
+    container_name: fake-ingress
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3099/health"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  agm-test:
+    build:
+      context: /Users/wangguiping/workspace/agent-git-mail
+      dockerfile: packages/agm/test/docker/profile-e2e/Dockerfile
+    depends_on:
+      fake-ingress:
+        condition: service_healthy
+    environment:
+      - AGM_BASE_DIR=/workspace/testdata/.agm
+      - AGM_CONFIG_DIR=/workspace/testdata/.config/agm
+      - HAPPYCLAW_INTERNAL_SECRET=secret_123
+      - INGRESS_MODE=${INGRESS_MODE:-success}
+    volumes:
+      - testdata:/workspace/testdata
+      - ingress-data:/tmp/fake-ingress
+    container_name: agm-test
+
+volumes:
+  ingress-data:
+  testdata:

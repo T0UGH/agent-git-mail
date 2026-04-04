@@ -1,0 +1,32 @@
+profiles:
+  mt:
+    self:
+      id: mt
+      remote_repo_url: /workspace/testdata/repos/mt-remote.git
+    contacts:
+      hex:
+        remote_repo_url: /workspace/testdata/repos/hex-remote.git
+    runtime:
+      poll_interval_seconds: 1
+    host_integration:
+      kind: happyclaw
+      happyclaw:
+        base_url: http://fake-ingress:3099/internal
+        bearer_token_env: HAPPYCLAW_INTERNAL_SECRET
+        target_jid: feishu:test-hex
+
+  hex:
+    self:
+      id: hex
+      remote_repo_url: /workspace/testdata/repos/hex-remote.git
+    contacts:
+      mt:
+        remote_repo_url: /workspace/testdata/repos/mt-remote.git
+    runtime:
+      poll_interval_seconds: 1
+    host_integration:
+      kind: happyclaw
+      happyclaw:
+        base_url: http://fake-ingress:3099/internal
+        bearer_token_env: HAPPYCLAW_INTERNAL_SECRET
+        target_jid: feishu:test-hex

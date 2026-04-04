@@ -6,6 +6,7 @@ export async function cmdReply(argv: ReplyOptions & { bodyFile: string; configPa
     from: argv.from as string,
     bodyFile: argv.bodyFile as string,
     dir: argv.dir as 'inbox' | 'outbox' | undefined,
+    profile: argv.profile as string,
     configPath: argv.configPath as string | undefined,
   });
   console.log(`Sent reply: ${result.filename}`);

@@ -13,10 +13,11 @@ export type DoctorGroup = 'config' | 'git' | 'runtime' | 'state';
 
 export interface DoctorOptions {
   group?: DoctorGroup | 'all';
+  profile?: string;
   json?: boolean;
 }
 
-const GROUP_CHECKERS: Record<DoctorGroup, () => CheckResult[]> = {
+const GROUP_CHECKERS: Record<DoctorGroup, (profile: string) => CheckResult[]> = {
   config: checkConfig,
   git: checkGit,
   runtime: checkRuntime,
@@ -24,14 +25,14 @@ const GROUP_CHECKERS: Record<DoctorGroup, () => CheckResult[]> = {
 };
 
 export function runDoctor(opts: DoctorOptions = {}): CheckResult[] {
-  const { group = 'all' } = opts;
+  const { group = 'all', profile = 'mt' } = opts;
 
   if (group === 'all') {
     const all: CheckResult[] = [
-      ...checkConfig(),
-      ...checkGit(),
-      ...checkRuntime(),
-      ...checkState(),
+      ...checkConfig(profile),
+      ...checkGit(profile),
+      ...checkRuntime(profile),
+      ...checkState(profile),
     ];
     return all;
   }
@@ -48,7 +49,7 @@ export function runDoctor(opts: DoctorOptions = {}): CheckResult[] {
     ];
   }
 
-  return checker();
+  return checker(profile);
 }
 
 export function formatDoctorOutput(results: CheckResult[], json = false): string {

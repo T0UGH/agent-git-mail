@@ -8,6 +8,7 @@ export async function cmdSend(argv: SendOptions): Promise<void> {
     bodyFile: argv.bodyFile as string,
     replyTo: argv.replyTo as string | undefined,
     expectsReply: argv.expectsReply as boolean | undefined,
+    profile: argv.profile as string,
     configPath: argv.configPath as string | undefined,
   });
   console.log(`Sent: ${result.filename}`);
