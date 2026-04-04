@@ -49,3 +49,13 @@ export function getEventsPath(profile: string): string {
 export function getSessionBindingsPath(profile: string): string {
   return resolve(getProfileStateDir(profile), 'session-bindings.json');
 }
+
+/** Daemon stdout log path for a profile */
+export function getDaemonStdoutPath(profile: string): string {
+  return resolve(getProfileStateDir(profile), 'daemon.stdout.log');
+}
+
+/** Daemon stderr log path for a profile */
+export function getDaemonStderrPath(profile: string): string {
+  return resolve(getProfileStateDir(profile), 'daemon.stderr.log');
+}

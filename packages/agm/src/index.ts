@@ -44,18 +44,10 @@ const subcommands: Record<string, (argv: Record<string, unknown>) => Promise<voi
     await cmdArchive(argv as unknown as Parameters<typeof cmdArchive>[0]);
   },
   daemon: async (argv) => {
-    const { runDaemon } = await import('./app/run-daemon.js');
-    const { loadConfig } = await import('./config/load.js');
-    const { requireProfile } = await import('./config/profile.js');
-    const config = loadConfig();
-    const profile = requireProfile(argv['profile'] as string | undefined);
-    const once = argv['once'] === true;
-    await runDaemon({
-      config,
-      profile,
-      // Pass a no-op onNewMail to trigger one-shot mode
-      ...(once ? { onNewMail: async () => {} } : {}),
-    });
+    const { cmdDaemon } = await import('./cli/commands/daemon.js');
+    // positionalKeyFor('daemon') = 'action', so parseArgv already stored the first
+    // positional after 'daemon' into argv['action']. Default to 'run' if omitted.
+    await cmdDaemon({ ...argv, action: (argv['action'] as string | undefined) ?? 'run' });
   },
   doctor: async (argv) => {
     await cmdDoctor(argv as unknown as Parameters<typeof cmdDoctor>[0]);
@@ -91,6 +83,8 @@ function positionalKeyFor(subcommand: string): string | null {
       return 'filename';
     case 'doctor':
       return 'group';
+    case 'daemon':
+      return 'action';
     default:
       return null;
   }
@@ -198,7 +192,7 @@ Subcommands:
   read --profile <name> <filename.md> --agent <a> [--dir inbox|outbox|archive]
   list --profile <name> --agent <a> [--dir inbox|outbox|archive] [--format table|json]
   archive --profile <name> <filename.md> --agent <a>
-  daemon --profile <name> [--once]
+  daemon --profile <name> [run|start|stop|status] [--once]
   doctor --profile <name> [config|git|...]  Run health checks (default: all groups)
   log --profile <name> [--tail <n>] [--since <duration>] [--type <type>] [--json]
                             Show structured event log
@@ -221,7 +215,7 @@ Examples:
   agm --profile mt config get runtime.poll_interval_seconds
   agm --profile mt config set runtime.poll_interval_seconds 60
   agm --profile mt send --from mt --to hex --subject "Hello" --body-file /tmp/body.md
-  agm --profile hex daemon
+  agm --profile hex daemon run
   agm --profile mt doctor
   agm --profile mt bootstrap
   agm --profile mt bootstrap --self-remote-repo-url https://github.com/USER/mailbox.git
