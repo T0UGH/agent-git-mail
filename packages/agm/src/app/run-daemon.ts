@@ -7,6 +7,7 @@ import type { Config } from '../config/schema.js';
 import { getAgentEntries, getSelfId, getSelfLocalRepoPath, isConfigV2 } from '../config/index.js';
 import { hasActivated, markActivated } from '../activator/checkpoint-store.js';
 import { createActivator, AgmActivator } from '../activator/index.js';
+import { createHappyClawAdapter, HostAdapter } from '../host-adapter/index.js';
 import { appendEvent } from '../log/events.js';
 
 export interface DaemonOptions {
@@ -72,7 +73,9 @@ async function runPoll(opts: DaemonOptions): Promise<void> {
     // Non-fatal
   }
 
-  // Create activator from config (v2 only)
+  // Create host adapter (HappyClaw ingress) — preferred
+  const hostAdapter = createHappyClawAdapter(opts.config);
+  // Fall back to OpenClaw external activator
   const activator = createActivator(opts.config);
 
   // Build onNewMail wrapper that handles activation
@@ -94,8 +97,7 @@ async function runPoll(opts: DaemonOptions): Promise<void> {
     } catch {
       // Non-fatal
     }
-    // Handle external activation via activator
-    if (!activator) return;
+    // Skip if already activated
     if (hasActivated(selfId, mail.filename)) {
       log(`[daemon] activation skipped (already activated): ${mail.filename}`);
       try {
@@ -112,15 +114,38 @@ async function runPoll(opts: DaemonOptions): Promise<void> {
       }
       return;
     }
-    const result = await activator.activate({
-      selfId,
-      filename: mail.filename,
-      from: mail.from,
-      message: `[AGM ACTION REQUIRED]\n你有新的 Agent Git Mail。\n请先执行：agm read ${mail.filename}`,
-    });
-    if (result.ok) {
+    // Try HappyClaw host adapter first, then fall back to activator
+    let activationOk = false;
+    let activationError: string | undefined;
+    let activationName = 'none';
+    if (hostAdapter) {
+      const result = await hostAdapter.deliverMailboxEvent({
+        selfId,
+        targetJid: '', // filled by adapter from config
+        messageId: mail.filename,
+        from: mail.from,
+        content: `[AGM ACTION REQUIRED]\n你有新的 Agent Git Mail。\n请先执行：agm read ${mail.filename}`,
+      });
+      activationOk = result.ok;
+      activationError = result.error;
+      activationName = hostAdapter.name;
+    } else if (activator) {
+      const result = await activator.activate({
+        selfId,
+        filename: mail.filename,
+        from: mail.from,
+        message: `[AGM ACTION REQUIRED]\n你有新的 Agent Git Mail。\n请先执行：agm read ${mail.filename}`,
+      });
+      activationOk = result.ok;
+      activationError = result.error ?? undefined;
+      activationName = activator.name;
+    } else {
+      log(`[daemon] no activation configured for ${mail.filename}`);
+      return;
+    }
+    if (activationOk) {
       markActivated(selfId, mail.filename);
-      log(`[daemon] activation sent: ${mail.filename} via ${activator.name}`);
+      log(`[daemon] activation sent: ${mail.filename} via ${activationName}`);
       try {
         appendEvent({
           ts: new Date().toISOString(),
@@ -129,13 +154,13 @@ async function runPoll(opts: DaemonOptions): Promise<void> {
           self_id: selfId,
           filename: mail.filename,
           message: `activation sent: ${mail.filename}`,
-          details: { activator: activator.name },
+          details: { activator: activationName },
         });
       } catch {
         // Non-fatal
       }
     } else {
-      log(`[daemon] activation failed: ${mail.filename} error=${result.error}`);
+      log(`[daemon] activation failed: ${mail.filename} error=${activationError}`);
       try {
         appendEvent({
           ts: new Date().toISOString(),
@@ -144,7 +169,7 @@ async function runPoll(opts: DaemonOptions): Promise<void> {
           self_id: selfId,
           filename: mail.filename,
           message: `activation failed: ${mail.filename}`,
-          details: { error: result.error },
+          details: { error: activationError },
         });
       } catch {
         // Non-fatal

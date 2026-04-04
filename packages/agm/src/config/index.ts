@@ -20,6 +20,7 @@ export {
   getContactRepoPath,
   getAgentRepoPath,
   getAgentEntries,
+  getHostIntegrationConfig,
   unknownAgentError,
   type Config,
   type ConfigV2,
@@ -31,4 +32,6 @@ export {
   type ContactsConfig,
   type NotificationsConfig,
   type RuntimeConfig,
+  type HappyClawHostConfig,
+  type HostIntegrationConfig,
 } from './schema.js';

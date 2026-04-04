@@ -42,12 +42,25 @@ export const ContactConfigSchema = z.object({
 
 export const ContactsConfigSchema = z.record(z.string(), ContactConfigSchema);
 
+// --- Host integration (HappyClaw ingress) ---
+export const HappyClawHostConfigSchema = z.object({
+  base_url: z.string().default('http://127.0.0.1:3000/internal'),
+  bearer_token_env: z.string().default('HAPPYCLAW_INTERNAL_SECRET'),
+  target_jid: z.string(),
+});
+
+export const HostIntegrationConfigSchema = z.object({
+  kind: z.literal('happyclaw'),
+  happyclaw: HappyClawHostConfigSchema,
+});
+
 export const ConfigSchemaV2 = z.object({
   self: SelfConfigSchema,
   contacts: ContactsConfigSchema.optional().default({}),
   notifications: NotificationsConfigSchema.optional().default({}),
   runtime: RuntimeConfigSchema.optional().default({}),
   activation: ActivationConfigSchema.optional(),
+  host_integration: HostIntegrationConfigSchema.optional(),
 });
 
 // --- Legacy v1 (self + plain path contacts) ---
@@ -236,3 +249,12 @@ export function unknownAgentError(agentName: string, config: Config): never {
     `Unknown agent: ${agentName}\n\nHint: "${agentName}" is not in your config.\nYour agents: ${agents.join(', ')}`,
   );
 }
+
+/** Returns the host_integration config if set (v2 config only), null otherwise */
+export function getHostIntegrationConfig(c: Config): HostIntegrationConfig | null {
+  if (isConfigV2(c) && c.host_integration) return c.host_integration;
+  return null;
+}
+
+export type HappyClawHostConfig = z.infer<typeof HappyClawHostConfigSchema>;
+export type HostIntegrationConfig = z.infer<typeof HostIntegrationConfigSchema>;
