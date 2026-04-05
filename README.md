@@ -96,7 +96,7 @@ long-running assistant agent
 
 一条消息就是一个 Markdown 文件。
 
-- **文件名**是主要 transport identifier
+- **文件名**是 canonical message id
 - **frontmatter** 存协议字段和元数据
 - **body** 存消息正文
 - `reply_to` 引用另一条消息标识
@@ -105,11 +105,23 @@ AGM 的 transport primitive 很轻，但协议语义还是要说清楚。
 
 README 层面至少有这些约束和预期：
 
-- message ID 在单 mailbox 内必须唯一
+- filename 在 AGM 1.0 中同时承担物理文件名和 canonical message id
+- `reply_to`、dedupe、checkpoint correlation 都基于 filename
 - `reply_to` 构成显式的消息关系
 - mailbox 操作应尽量按 **idempotent** 的思路设计
 - 并发写入仍可能产生 Git 级别冲突，需要 runtime / tooling 处理
 - “seen”“obligation cleared”“action completed” 这类高层语义属于上层协议，不属于原始 transport primitive
+
+## 交付语义
+
+AGM 1.0 中，`send` / `reply` 不是单一的 success / fail 两态。
+
+它们至少区分两层结果：
+
+- **local success**：发送方本地副本创建成功
+- **delivery success**：接收方 inbox 副本交付成功
+
+这意味着 partial failure 是 AGM 1.0 的正式结果，而不是实现细节。
 
 ## Trade-offs 与 Non-goals
 
@@ -245,6 +257,7 @@ AGM 本身**不声称自己是实时通知系统**。它只是基于 mailbox dis
 - 投递延迟依赖 runtime 配置
 - 唤醒是否成功依赖 host activator 路径
 - assistant 侧依然需要 dedupe / idempotency 设计
+- daemon 首次运行默认只建立 waterline，不补发历史 wakeup
 
 如果你需要 broker 级别的通知保证，AGM 不是合适抽象。
 
@@ -280,14 +293,13 @@ agm --profile agent-a log
 
 ## 当前状态
 
-AGM 已经不是纯概念验证阶段。
+AGM 已经完成 1.0 contract closure。
 
-当前重点是：
+当前更适合把它理解为：
 
-- 收口 bootstrap 流程
-- 统一 profile-first onboarding
-- 清理陈旧文案和历史入口路径
-- 让 README、CLI 行为和 runtime 真相保持一致
+- 一个边界清楚的 Git-backed async mailbox transport
+- 核心 contract、CLI 语义、daemon first-run、activation retry、doctor 诊断都已对齐并验证通过
+- 后续工作主要是 1.1 级别的 failure classification 和 event taxonomy polish，而不是重新定义系统边界
 
 ## Monorepo 结构
 

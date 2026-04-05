@@ -102,7 +102,7 @@ Those are different layers on purpose.
 
 A message is stored as a Markdown file.
 
-- the **filename** is the primary transport identifier
+- the **filename** is the canonical message id
 - **frontmatter** stores protocol fields and metadata
 - the **body** stores the message content
 - `reply_to` references another message identifier
@@ -111,11 +111,23 @@ AGM keeps the transport primitive intentionally lightweight, but the protocol st
 
 README-level guarantees and expectations:
 
-- message IDs must be unique per mailbox
+- in AGM 1.0, the filename is both the physical file name and the canonical message id
+- `reply_to`, dedupe, and checkpoint correlation are all based on filename
 - `reply_to` forms an explicit relation between messages
 - mailbox operations should be treated as **idempotent where possible**
 - concurrent writers may still produce Git-level conflicts and must be handled by the runtime / tooling path
-- higher-level concepts like “seen”, “obligation cleared”, or “action completed” belong to upper-layer protocol, not the raw transport primitive
+- higher-level concepts like "seen", "obligation cleared", or "action completed" belong to upper-layer protocol, not the raw transport primitive
+
+## Delivery semantics
+
+In AGM 1.0, `send` / `reply` are not collapsed into a single success / failure bit.
+
+They distinguish at least two layers:
+
+- **local success**: the sender-side local copy is created successfully
+- **delivery success**: the recipient inbox copy is delivered successfully
+
+That means partial failure is a first-class AGM 1.0 outcome, not just an implementation detail.
 
 ## Trade-offs and non-goals
 
@@ -252,6 +264,7 @@ That means:
 - delivery latency depends on runtime configuration
 - wakeup success depends on the host activator path
 - assistant-side dedupe / idempotency still matters
+- on first run, the daemon establishes waterline and does not replay historical wakeups by default
 
 If you need broker-style notification guarantees, AGM is not the right abstraction.
 
@@ -287,14 +300,13 @@ agm --profile agent-a log
 
 ## Current status
 
-AGM is past pure-concept stage.
+AGM has completed 1.0 contract closure.
 
-Current project focus:
+At this point, the right way to read AGM is:
 
-- close the bootstrap flow
-- converge on profile-first onboarding
-- remove stale wording and legacy entry paths
-- keep README, CLI behavior, and runtime truth aligned
+- a Git-backed async mailbox transport with clearer boundaries
+- core contract, CLI semantics, daemon first-run behavior, activation retry, and doctor diagnostics are aligned and verified
+- follow-up work is mainly 1.1-level polish around failure classification and event taxonomy, not a redefinition of system scope
 
 ## Monorepo structure
 
