@@ -1,170 +1,170 @@
 # Agent Git Mail
 
-Agent Git Mail (AGM) is a **Git-backed asynchronous mailbox transport** for long-running assistant agents.
+[English README](./README_en.md)
 
-It lets an agent use a Git repository as its mailbox, exchange durable async messages as Markdown files, and integrate with a local wakeup path when new mail arrives.
+Agent Git Mail（AGM）是一个**基于 Git 的异步邮箱传输层**，面向长期在线的助理型 Agent。
+
+它让 Agent 以 Git 仓库作为邮箱，用 Markdown 文件交换可持久化的异步消息，并在新邮件到达时接入本地唤醒路径。
 
 **Simple is better.**  
-**No central server. No task orchestrator. No workflow maze.**
+**没有中心化 server。没有任务编排器。没有工作流迷宫。**
 
-## What AGM is
+## AGM 是什么
 
-AGM is designed for a narrow problem:
+AGM 解决的是一个刻意收窄的问题：
 
-- durable async message handoff between long-running agents
-- Git-native storage with auditability and history
-- simple host integration for “new mail arrived” wakeup
-- low-infrastructure deployments where Git is already available
+- 长期在线 Agent 之间的可持久化异步消息交接
+- 基于 Git 的存储、审计与历史追踪
+- 面向“有新信到了”的简单宿主唤醒集成
+- 在已有 Git 基础设施下的低平台依赖部署
 
-In short:
+一句话：
 
-> AGM is a **mailbox transport + wakeup integration layer**, not a full agent runtime.
+> AGM 是一个 **mailbox transport + wakeup integration layer**，不是完整的 Agent runtime。
 
-## What AGM is not
+## AGM 不是什么
 
-AGM is **not** trying to be any of the following:
+AGM **不**试图变成下面这些东西：
 
-- not an IM system
-- not a low-latency message bus
-- not a task queue
-- not a workflow orchestrator
-- not a general-purpose multi-agent runtime
-- not a replacement for obligation tracking, session management, or higher-level assistant protocols
+- 不是 IM 系统
+- 不是低延迟消息总线
+- 不是任务队列
+- 不是工作流编排器
+- 不是通用多 Agent runtime
+- 也不是 obligation tracking、session management、上层 assistant protocol 的替代品
 
-If you need strong delivery guarantees, centralized scheduling, complex retries, or large-scale fleet coordination, AGM is the wrong layer.
+如果你需要强投递保证、中心化调度、复杂重试、或者大规模 fleet coordination，AGM 不是对的那一层。
 
-## Why Git
+## 为什么用 Git
 
-AGM uses Git on purpose, but for a specific reason.
+AGM 选择 Git，不是为了“实时消息”，而是为了下面这些特性：
 
-Git is not chosen for real-time messaging. It is chosen because it gives us:
+- 可持久化、可审计的历史记录
+- 简单的复制与备份模型
+- 熟悉的托管与鉴权工作流
+- append-mostly 的协作基础
+- 在低基础设施前提下也能成立的异步交换底座
 
-- durable, auditable history
-- simple replication and backup
-- familiar hosting and auth workflows
-- append-mostly collaboration primitives
-- a practical async substrate with very low platform assumptions
+trade-off 也必须说清楚：
 
-The trade-off is explicit:
+> Git 擅长 durability 和 traceability，不擅长 low-latency messaging。
 
-> Git is good at durability and traceability. It is not good at low-latency messaging.
+## 核心模型
 
-## Core model
+AGM 刻意把核心模型压得很小：
 
-AGM keeps the core model intentionally small:
-
-- **one agent, one mailbox repo**
-- **one message, one Markdown file**
+- **一个 agent，一个 mailbox repo**
+- **一条消息，一个 Markdown 文件**
 - **frontmatter + body = transport payload**
-- **daemon detects new mail and triggers a wakeup path**
+- **daemon 负责发现新信并触发唤醒路径**
 
-A typical deployment looks like this:
+一个典型部署大致是这样：
 
-1. each agent owns one remote mailbox repo
-2. the runtime keeps one local clone for that mailbox
-3. send / reply operations write message files through Git
-4. the daemon discovers new mail in the local mailbox view
-5. a host-specific activator wakes the long-running assistant runtime
+1. 每个 agent 拥有一个 remote mailbox repo
+2. 本地 runtime 维护这个 mailbox 的 local clone
+3. send / reply 通过 Git 写入消息文件
+4. daemon 在本地 mailbox 视图中发现新信
+5. host-specific activator 唤醒长期在线 assistant runtime
 
-### Architecture at a glance
+### 架构总览
 
 ```text
 sender/runtime
     |
-    | write message via AGM CLI
+    | 通过 AGM CLI 写入消息
     v
 receiver mailbox repo (Git remote)
     |
-    | sync to local clone
+    | 同步到本地 clone
     v
 AGM daemon
     |
-    | detect new mail
+    | 发现新信
     v
 activator / host integration
     |
-    | wake assistant host
+    | 唤醒 assistant host
     v
 long-running assistant agent
 ```
 
-The important boundary is:
+这里最重要的边界是：
 
-- **mailbox transport** handles message persistence and sync
-- **daemon / activator** handles new-mail discovery and wakeup
-- **assistant runtime / skill layer** handles obligation, interpretation, workflow, and action
+- **mailbox transport** 负责消息持久化与同步
+- **daemon / activator** 负责新信发现与唤醒
+- **assistant runtime / skill layer** 负责 obligation、解释、工作流与具体动作
 
-Those are different layers on purpose.
+这三层是故意分开的。
 
-## Message model
+## 消息模型
 
-A message is stored as a Markdown file.
+一条消息就是一个 Markdown 文件。
 
-- the **filename** is the primary transport identifier
-- **frontmatter** stores protocol fields and metadata
-- the **body** stores the message content
-- `reply_to` references another message identifier
+- **文件名**是主要 transport identifier
+- **frontmatter** 存协议字段和元数据
+- **body** 存消息正文
+- `reply_to` 引用另一条消息标识
 
-AGM keeps the transport primitive intentionally lightweight, but the protocol still needs clear semantics.
+AGM 的 transport primitive 很轻，但协议语义还是要讲清楚。
 
-README-level guarantees and expectations:
+README 层面至少有这些约束和预期：
 
-- message IDs must be unique per mailbox
-- `reply_to` forms an explicit relation between messages
-- mailbox operations should be treated as **idempotent where possible**
-- concurrent writers may still produce Git-level conflicts and must be handled by the runtime / tooling path
-- higher-level concepts like “seen”, “obligation cleared”, or “action completed” belong to upper-layer protocol, not the raw transport primitive
+- message ID 在单 mailbox 内必须唯一
+- `reply_to` 构成显式的消息关系
+- mailbox 操作应尽量按 **idempotent** 思路设计
+- 并发写入仍可能产生 Git 级别冲突，需要 runtime / tooling 处理
+- “seen”“obligation cleared”“action completed” 这类高层语义属于上层协议，不属于原始 transport primitive
 
-## Trade-offs and non-goals
+## Trade-offs 与 Non-goals
 
-AGM is deliberately opinionated. It chooses simplicity and auditability over completeness.
+AGM 是一个有明确取舍的系统。它优先选择简单性和可审计性，而不是完整性。
 
 ### Trade-offs
 
-- higher latency than purpose-built messaging systems
-- operational friction shifts to Git repo management
-- scaling characteristics are better for small deployments than large fleets
-- wakeup reliability depends on the chosen integration mode
-- ordering is limited by Git sync and protocol handling, not by a central broker
+- 延迟高于专用消息系统
+- 运维复杂度的一部分转移到了 Git repo 管理上
+- 更适合小规模部署，不适合大规模 fleet
+- 唤醒可靠性依赖具体 integration mode
+- 顺序性受 Git sync 和协议处理影响，而不是由中心 broker 保证
 
 ### Non-goals
 
-AGM does not try to provide:
+AGM 不试图内建以下能力：
 
-- centralized state truth for all agent workflows
-- queue scheduling or priority dispatch
-- built-in retry orchestration
-- global ordering guarantees
-- large-scale mailbox fleet management
-- complete assistant behavior semantics
+- 所有 agent workflow 的中心化状态真相
+- 队列调度或优先级派发
+- 内建重试编排
+- 全局顺序保证
+- 大规模 mailbox fleet 管理
+- 完整的 assistant behavior semantics
 
-If your use case needs those, layer them above AGM or choose a different transport.
+如果你的场景需要这些能力，要么叠在 AGM 上层，要么换 transport。
 
-## Who AGM is for
+## 适用场景 / 不适用场景
 
-### Good fit
+### 适合
 
-- long-running assistant agents
-- async handoff between agents or between human and agent
-- small-scale or medium-scale systems that value auditability over speed
-- OpenClaw-like assistant hosts that already have a wakeup / activation path
+- 长期在线的助理型 Agent
+- agent 与 agent / human 与 agent 之间的异步 handoff
+- 更看重 auditability 而不是速度的小中规模系统
+- 已经有 wakeup / activation path 的 OpenClaw-like assistant host
 
-### Poor fit
+### 不适合
 
-- short-lived “do work then exit” coding agents
-- high-throughput multi-agent execution systems
-- centralized orchestration-heavy platforms
-- systems that require strict queue semantics or low-latency delivery
+- 干完即走的短生命周期 coding agent
+- 高吞吐的多 Agent 执行系统
+- 强中心化编排的平台
+- 需要严格 queue semantics 或低延迟投递的系统
 
 ## Quickstart
 
-### 1. Install CLI
+### 1. 安装 CLI
 
 ```bash
 npm install -g @t0u9h/agent-git-mail
 ```
 
-### 2. Bootstrap one profile
+### 2. Bootstrap 一个 profile
 
 ```bash
 agm --profile agent-a bootstrap \
@@ -172,15 +172,15 @@ agm --profile agent-a bootstrap \
   --self-remote-repo-url https://github.com/USER/agent-a-mailbox.git
 ```
 
-Notes:
+说明：
 
-- `--profile` is the local runtime profile
-- `--self-id` is the agent identity bound to that profile
-- default self repo path: `~/.agm/profiles/<profile>/self`
-- local self repo path is derived from the profile unless explicitly overridden
-- `--self-local-repo-path` remains available as an advanced override
+- `--profile` 是本地 runtime profile
+- `--self-id` 是绑定到该 profile 的 agent identity
+- 默认 self repo path：`~/.agm/profiles/<profile>/self`
+- 本地 self repo path 默认从 profile 派生，除非显式 override
+- `--self-local-repo-path` 仍保留为高级覆盖参数
 
-If you also want to configure an external activation target:
+如果你还想配置外部激活 open_id：
 
 ```bash
 agm --profile agent-a bootstrap \
@@ -189,13 +189,13 @@ agm --profile agent-a bootstrap \
   --activation-open-id ou_xxx
 ```
 
-### 3. Verify the profile
+### 3. 验证 profile
 
 ```bash
 agm --profile agent-a config show
 ```
 
-Example profile structure:
+典型 profile 结构如下：
 
 ```yaml
 profiles:
@@ -222,40 +222,39 @@ profiles:
           请先执行：agm read {{filename}}
 ```
 
-## Run the daemon
+## 运行 daemon
 
 ```bash
 agm --profile agent-a daemon run
 ```
 
-On macOS, you can also use launchd management:
+在 macOS 上，也可以使用 launchd 托管：
 
 ```bash
 agm --profile agent-a daemon start
 agm --profile agent-a daemon status
 ```
 
-When new mail is detected, the daemon triggers the configured activator / host integration.
+检测到新邮件后，daemon 会触发配置好的 activator / host integration。
 
-## Wakeup model
+## Wakeup 模型
 
-AGM mailbox storage and agent wakeup are related, but they are not the same thing.
+AGM 的 mailbox storage 和 agent wakeup 有关联，但它们不是同一层。
 
-AGM itself does **not** claim to be a realtime notification system.
-Instead, it provides a practical wakeup integration path on top of mailbox discovery.
+AGM 本身**不声称自己是实时通知系统**。它只是基于 mailbox discovery 提供一个可用的 wakeup integration path。
 
-That means:
+这意味着：
 
-- new mail discovery can be polling-based or host-integration-based
-- delivery latency depends on runtime configuration
-- wakeup success depends on the host activator path
-- assistant-side dedupe / idempotency still matters
+- 新信发现可以基于 polling，也可以基于宿主集成
+- 投递延迟依赖 runtime 配置
+- 唤醒是否成功依赖 host activator 路径
+- assistant 侧依然需要 dedupe / idempotency 设计
 
-If you need broker-style notification guarantees, AGM is not the right abstraction.
+如果你需要 broker 级别的通知保证，AGM 不是合适抽象。
 
-## Verify AGM is working
+## 验证 AGM 是否工作正常
 
-Recommended verification path:
+建议按这条路径验证：
 
 ```bash
 agm --profile agent-a config show
@@ -263,15 +262,15 @@ agm --profile agent-a doctor
 agm --profile agent-a log
 ```
 
-Then verify end to end:
+然后做一次端到端验证：
 
-1. send a test message from another profile
-2. confirm the receiver mailbox contains the message
-3. confirm the daemon detects the new message
-4. confirm the activator emits the wakeup action
-5. confirm the assistant host surfaces the wakeup on the receiving side
+1. 从另一个 profile 发一封测试信
+2. 确认 receiver mailbox 中出现该消息
+3. 确认 daemon 检测到新消息
+4. 确认 activator 发出唤醒动作
+5. 确认接收侧 assistant host 能看到这次唤醒
 
-## Common commands
+## 常用命令
 
 ```bash
 agm --profile agent-a send --from agent-a --to agent-b --subject "Hello" --body-file /tmp/body.md
@@ -283,18 +282,18 @@ agm --profile agent-a doctor
 agm --profile agent-a log
 ```
 
-## Current status
+## 当前状态
 
-AGM is past pure-concept stage.
+AGM 已经不是纯概念验证阶段。
 
-Current project focus:
+当前重点是：
 
-- close the bootstrap flow
-- converge on profile-first onboarding
-- remove stale wording and legacy entry paths
-- keep README, CLI behavior, and runtime truth aligned
+- 收口 bootstrap 流程
+- 统一 profile-first onboarding
+- 清理陈旧文案和历史入口路径
+- 让 README、CLI 行为和 runtime 真相保持一致
 
-## Monorepo structure
+## Monorepo 结构
 
 ```text
 agent-git-mail/
@@ -306,9 +305,9 @@ agent-git-mail/
 └─ test/
 ```
 
-- `packages/agm`: CLI, daemon, protocol, Git orchestration, activation, host integration
-- `skills/agm-mail`: optional OpenClaw workflow skill, not AGM's core transport entry point
-- `docs/`: design, integration, implementation, and closure docs
+- `packages/agm`：CLI、daemon、protocol、Git orchestration、activation、host integration
+- `skills/agm-mail`：可选的 OpenClaw workflow skill，不是 AGM 的核心 transport 入口
+- `docs/`：设计、集成、实现与收口文档
 
 ## License
 
