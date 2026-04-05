@@ -17,6 +17,8 @@ export interface ActivationResult {
   ok: boolean;
   activator: string;
   externalId?: string | null;
+  /** If false, this failure is permanent and should not be retried. Defaults to true. */
+  retryable?: boolean;
   error?: string | null;
 }
 

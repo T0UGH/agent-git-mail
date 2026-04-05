@@ -47,9 +47,12 @@ export function checkRuntime(profile: string): CheckResult[] {
   }
 
   // Check: last activation result
-  // Get ALL activation-related events and take the truly latest by timestamp
+  // Get ALL activation-related events (excluding transient 'retrying') and take the truly latest by timestamp
   const activationEvents = recentEvents(profile).filter(e =>
-    e.type === 'activation_sent' || e.type === 'activation_failed' || e.type === 'activation_skipped_checkpoint'
+    e.type === 'activation_sent' ||
+    e.type === 'activation_failed' ||
+    e.type === 'activation_skipped_checkpoint' ||
+    e.type === 'activation_retries_exhausted'
   );
   const lastActivation = activationEvents[0] ?? null;
 
@@ -68,6 +71,14 @@ export function checkRuntime(profile: string): CheckResult[] {
       message: `last activation sent at ${lastActivation.ts}`,
       details: { filename: lastActivation.filename, ts: lastActivation.ts },
     });
+  } else if (lastActivation.type === 'activation_retries_exhausted') {
+    results.push({
+      name: 'last_activation',
+      status: 'FAIL',
+      code: 'ACTIVATION_RETRIES_EXHAUSTED',
+      message: `activation retries exhausted: ${lastActivation.message}`,
+      details: { error: lastActivation.details?.error, attempts: lastActivation.details?.attempts, ts: lastActivation.ts },
+    });
   } else if (lastActivation.type === 'activation_failed') {
     results.push({
       name: 'last_activation',
@@ -84,6 +95,18 @@ export function checkRuntime(profile: string): CheckResult[] {
       code: 'OK',
       message: `last activation skipped (checkpoint) at ${lastActivation.ts}`,
       details: { filename: lastActivation.filename, ts: lastActivation.ts },
+    });
+  }
+
+  // Check: recent activation retries (indicates transient delivery problems)
+  const retryEvents = recentEvents(profile).filter(e => e.type === 'activation_retrying');
+  if (retryEvents.length > 0) {
+    results.push({
+      name: 'activation_retries_recent',
+      status: 'WARN',
+      code: 'RECENT_ACTIVATION_RETRIES',
+      message: `${retryEvents.length} activation retry attempt(s) in last 10 minutes`,
+      details: { count: retryEvents.length, last_ts: retryEvents[0].ts },
     });
   }
 

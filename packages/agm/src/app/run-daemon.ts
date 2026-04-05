@@ -113,35 +113,89 @@ async function runPoll(opts: DaemonOptions): Promise<void> {
       }
       return;
     }
-    // Try HappyClaw host adapter first, then fall back to activator
-    let activationOk = false;
-    let activationError: string | undefined;
-    let activationName = 'none';
-    if (hostAdapter) {
-      const result = await hostAdapter.deliverMailboxEvent({
-        selfId,
-        targetJid: '', // filled by adapter from config
-        messageId: mail.filename,
-        from: mail.from,
-        content: `[AGM ACTION REQUIRED]\n你有新的 Agent Git Mail。\n请先执行：agm read ${mail.filename}`,
-      });
-      activationOk = result.ok;
-      activationError = result.error;
-      activationName = hostAdapter.name;
-    } else if (activator) {
-      const result = await activator.activate({
-        selfId,
-        filename: mail.filename,
-        from: mail.from,
-        message: `[AGM ACTION REQUIRED]\n你有新的 Agent Git Mail。\n请先执行：agm read ${mail.filename}`,
-      });
-      activationOk = result.ok;
-      activationError = result.error ?? undefined;
-      activationName = activator.name;
-    } else {
+    // Try HappyClaw host adapter first, then fall back to activator — with bounded retry
+    if (!hostAdapter && !activator) {
       log(`[daemon] no activation configured for ${mail.filename}`);
       return;
     }
+
+    const MAX_RETRIES = 4;
+    const BACKOFF_MS = [1000, 2000, 4000, 8000];
+
+    let activationOk = false;
+    let activationError: string | undefined;
+    let activationName = hostAdapter?.name ?? activator?.name ?? 'none';
+
+    const attemptDelivery = async (): Promise<{ ok: boolean; retryable: boolean; error?: string; name: string }> => {
+      if (hostAdapter) {
+        const result = await hostAdapter.deliverMailboxEvent({
+          selfId,
+          targetJid: '', // filled by adapter from config
+          messageId: mail.filename,
+          from: mail.from,
+          content: `[AGM ACTION REQUIRED]\n你有新的 Agent Git Mail。\n请先执行：agm read ${mail.filename}`,
+        });
+        return { ok: result.ok, retryable: result.retryable !== false, error: result.error, name: hostAdapter.name };
+      } else {
+        const result = await activator!.activate({
+          selfId,
+          filename: mail.filename,
+          from: mail.from,
+          message: `[AGM ACTION REQUIRED]\n你有新的 Agent Git Mail。\n请先执行：agm read ${mail.filename}`,
+        });
+        return { ok: result.ok, retryable: result.retryable !== false, error: result.error ?? undefined, name: activator!.name };
+      }
+    };
+
+    let lastError: string | undefined;
+    for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
+      const result = await attemptDelivery();
+      if (result.ok) {
+        activationOk = true;
+        activationName = result.name;
+        break;
+      }
+      lastError = result.error;
+      activationName = result.name;
+
+      if (result.retryable && attempt < MAX_RETRIES) {
+        log(`[daemon] activation retry ${attempt + 1}/${MAX_RETRIES} for ${mail.filename} after ${BACKOFF_MS[attempt]}ms: ${lastError}`);
+        try {
+          appendEvent({
+            ts: new Date().toISOString(),
+            type: 'activation_retrying',
+            level: 'warn',
+            self_id: selfId,
+            filename: mail.filename,
+            message: `activation retry ${attempt + 1}/${MAX_RETRIES}: ${mail.filename}`,
+            details: { attempt: attempt + 1, maxRetries: MAX_RETRIES, error: lastError, backoffMs: BACKOFF_MS[attempt] },
+          }, opts.profile);
+        } catch {
+          // Non-fatal
+        }
+        await sleep(BACKOFF_MS[attempt]);
+      } else {
+        if (attempt === MAX_RETRIES) {
+          log(`[daemon] activation retries exhausted for ${mail.filename}: ${lastError}`);
+          try {
+            appendEvent({
+              ts: new Date().toISOString(),
+              type: 'activation_retries_exhausted',
+              level: 'error',
+              self_id: selfId,
+              filename: mail.filename,
+              message: `activation retries exhausted: ${mail.filename}`,
+              details: { attempts: MAX_RETRIES + 1, error: lastError },
+            }, opts.profile);
+          } catch {
+            // Non-fatal
+          }
+        }
+        activationError = lastError;
+        break;
+      }
+    }
+
     if (activationOk) {
       markActivated(selfId, mail.filename, opts.profile);
       log(`[daemon] activation sent: ${mail.filename} via ${activationName}`);
@@ -236,23 +290,9 @@ async function watchAgent(
   let totalMail = 0;
 
   if (!lastSeen) {
-    // First run: find root commit and process all mail committed up to HEAD
-    const rootCommit = await repo.getRootCommit();
-    if (rootCommit) {
-      const diffOutput = await repo.diffNames(rootCommit, currentSha);
-      const newInboxFiles = parseDiff(diffOutput);
-      for (const filename of newInboxFiles) {
-        const from = await extractFrom(resolve(agent.repo_path, 'inbox', filename));
-        console.log(`[daemon] new mail for ${name}: from=${from} file=${filename}`);
-        if (onNewMail) {
-          await onNewMail({ agent: name, filename, from });
-        }
-        totalMail++;
-      }
-    }
-    // Set waterline to HEAD and exit
+    // First run: establish waterline only. Do NOT replay historical wakeups.
     await waterline.write(currentSha);
-    if (onMailCount) onMailCount(totalMail);
+    if (onMailCount) onMailCount(0);
     return;
   }
 

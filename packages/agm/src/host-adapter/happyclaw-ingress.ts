@@ -47,7 +47,9 @@ export function createHappyClawIngressAdapter(
           } catch {
             errorBody = await res.text();
           }
-          return { ok: false, error: `HTTP ${res.status}: ${errorBody}` };
+          // HTTP 5xx = server-side error = retryable; HTTP 4xx = client error = fail-fast
+          const retryable = res.status >= 500;
+          return { ok: false, retryable, error: `HTTP ${res.status}: ${errorBody}` };
         }
 
         const data = (await res.json()) as { ok?: boolean; messageId?: string; error?: string };
@@ -57,8 +59,9 @@ export function createHappyClawIngressAdapter(
           error: data.ok !== true ? data.error : undefined,
         };
       } catch (err) {
+        // Network error (fetch throws) = retryable
         const message = err instanceof Error ? err.message : String(err);
-        return { ok: false, error: message };
+        return { ok: false, retryable: true, error: message };
       }
     },
   };

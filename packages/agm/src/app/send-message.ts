@@ -22,12 +22,25 @@ export interface SendOptions {
   configPath?: string;
 }
 
+export interface SendMessageResult {
+  filename: string;
+  /** True if sender outbox write + commit + push succeeded */
+  localSuccess: boolean;
+  /** True if recipient inbox write + commit + push succeeded */
+  deliverySuccess: boolean;
+  /** Present when one side succeeded but the other failed */
+  partialFailure?: {
+    stage: 'sender' | 'recipient';
+    error: string;
+  };
+}
+
 /**
  * Send a message. Mailbox model: writes to sender's outbox AND recipient's inbox.
  * Both sides commit their copy. Sender pushes their origin; recipient repo is pushed
  * by the recipient's own agent (or in test environments, local paths allow direct push).
  */
-export async function sendMessage(opts: SendOptions): Promise<{ filename: string }> {
+export async function sendMessage(opts: SendOptions): Promise<SendMessageResult> {
   const config = loadConfig(opts.configPath);
   const profile = resolveProfile(config, opts.profile);
   const selfId = getProfileSelfId(profile);
@@ -71,26 +84,44 @@ export async function sendMessage(opts: SendOptions): Promise<{ filename: string
   const content = serializeFrontmatter(frontmatter) + '\n\n' + body;
 
   // --- Sender side: write to outbox ---
-  await ensureMaildirs(senderRepoPath);
-  await ensureGitIdentity(senderRepoPath);
-  const senderRepo = new GitRepo(senderRepoPath);
-  const outboxPath = resolve(senderRepoPath, 'outbox', filename);
-  await writeFileAtomic(outboxPath, content);
-  await senderRepo.add(`outbox/${filename}`);
-  await senderRepo.commit(`agm: send ${filename}`, `outbox/${filename}`);
-  await maybePush(senderRepo);
+  let localSuccess = false;
+  let deliverySuccess = false;
+  let partialFailure: SendMessageResult['partialFailure'];
+
+  try {
+    await ensureMaildirs(senderRepoPath);
+    await ensureGitIdentity(senderRepoPath);
+    const senderRepo = new GitRepo(senderRepoPath);
+    const outboxPath = resolve(senderRepoPath, 'outbox', filename);
+    await writeFileAtomic(outboxPath, content);
+    await senderRepo.add(`outbox/${filename}`);
+    await senderRepo.commit(`agm: send ${filename}`, `outbox/${filename}`);
+    await maybePush(senderRepo);
+    localSuccess = true;
+  } catch (e) {
+    partialFailure = { stage: 'sender', error: e instanceof Error ? e.message : String(e) };
+  }
 
   // --- Recipient side: write to inbox ---
-  await ensureMaildirs(recipientRepoPath);
-  await ensureGitIdentity(recipientRepoPath);
-  const recipientRepo = new GitRepo(recipientRepoPath);
-  const inboxPath = resolve(recipientRepoPath, 'inbox', filename);
-  await writeFileAtomic(inboxPath, content);
-  await recipientRepo.add(`inbox/${filename}`);
-  await recipientRepo.commit(`agm: deliver ${filename}`, `inbox/${filename}`);
-  await maybePush(recipientRepo);
+  try {
+    await ensureMaildirs(recipientRepoPath);
+    await ensureGitIdentity(recipientRepoPath);
+    const recipientRepo = new GitRepo(recipientRepoPath);
+    const inboxPath = resolve(recipientRepoPath, 'inbox', filename);
+    await writeFileAtomic(inboxPath, content);
+    await recipientRepo.add(`inbox/${filename}`);
+    await recipientRepo.commit(`agm: deliver ${filename}`, `inbox/${filename}`);
+    await maybePush(recipientRepo);
+    deliverySuccess = true;
+  } catch (e) {
+    if (partialFailure) {
+      // Both failed — upgrade to full failure (no partial)
+      return { filename, localSuccess, deliverySuccess: false };
+    }
+    partialFailure = { stage: 'recipient', error: e instanceof Error ? e.message : String(e) };
+  }
 
-  return { filename };
+  return { filename, localSuccess, deliverySuccess, partialFailure };
 }
 
 async function writeFileAtomic(path: string, content: string): Promise<void> {

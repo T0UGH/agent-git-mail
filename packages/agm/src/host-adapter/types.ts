@@ -15,6 +15,8 @@ export interface MailboxEventInput {
 export interface HostAdapterResult {
   ok: boolean;
   externalId?: string;
+  /** If false, this failure is permanent and should not be retried. Defaults to true. */
+  retryable?: boolean;
   error?: string;
 }
 

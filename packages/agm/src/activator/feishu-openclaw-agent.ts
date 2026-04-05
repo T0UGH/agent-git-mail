@@ -20,6 +20,17 @@ function renderTemplate(template: string, input: ActivationInput): string {
     .replace(/\{\{subject\}\}/g, input.subject ?? '');
 }
 
+/** Classify exec errors: ENOENT/EACCES = fail-fast (permanent), others = retryable (transient) */
+function classifyError(err: unknown): boolean {
+  if (err instanceof Error && 'code' in err) {
+    const code = (err as { code: string }).code;
+    // Permanent errors: command not found, permission denied
+    if (code === 'ENOENT' || code === 'EACCES') return false;
+  }
+  // Non-zero exit code from openclaw, timeout, etc. = retryable
+  return true;
+}
+
 export function createFeishuOpenclawAgent(
   config: FeishuActivatorConfig
 ): AgmActivator {
@@ -47,8 +58,10 @@ export function createFeishuOpenclawAgent(
         };
       } catch (err) {
         const error = err instanceof Error ? err.message : String(err);
+        const retryable = classifyError(err);
         return {
           ok: false,
+          retryable,
           activator: 'feishu-openclaw-agent',
           externalId: null,
           error,

@@ -15,7 +15,8 @@ export function generateFilename(opts: { from: string; to: string; createdAt: st
 }
 
 export function generateUniqueSuffix(): string {
-  return randomBytes(2).toString('hex').slice(0, 4);
+  // 4 random bytes = 32 bits = ~4 billion combinations → negligible collision probability
+  return randomBytes(4).toString('hex');
 }
 
 export interface ParseFilenameResult {

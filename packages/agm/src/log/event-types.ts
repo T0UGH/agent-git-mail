@@ -10,6 +10,8 @@ export const EVENT_TYPES = [
   'activation_sent',
   'activation_failed',
   'activation_skipped_checkpoint',
+  'activation_retrying',
+  'activation_retries_exhausted',
   'pull_timeout',
   'doctor_run',
 ] as const;

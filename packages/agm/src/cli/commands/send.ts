@@ -1,6 +1,10 @@
 import { sendMessage, type SendOptions } from '../../app/send-message.js';
 
-export async function cmdSend(argv: SendOptions): Promise<void> {
+interface SendArgv extends SendOptions {
+  json?: boolean;
+}
+
+export async function cmdSend(argv: SendArgv): Promise<void> {
   const result = await sendMessage({
     from: argv.from as string,
     to: argv.to as string,
@@ -11,5 +15,21 @@ export async function cmdSend(argv: SendOptions): Promise<void> {
     profile: argv.profile as string,
     configPath: argv.configPath as string | undefined,
   });
-  console.log(`Sent: ${result.filename}`);
+
+  if (argv.json) {
+    console.log(JSON.stringify(result));
+  } else {
+    if (result.partialFailure) {
+      console.log(`Sent: ${result.filename} (partial failure: ${result.partialFailure.stage} — ${result.partialFailure.error})`);
+    } else {
+      console.log(`Sent: ${result.filename}`);
+    }
+  }
+
+  // Exit code: 0 = full success, 1 = full failure, 2 = partial failure
+  if (!result.localSuccess && !result.deliverySuccess) {
+    process.exit(1);
+  } else if (result.partialFailure) {
+    process.exit(2);
+  }
 }
