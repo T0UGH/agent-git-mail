@@ -1,9 +1,9 @@
 {
   "name": "@t0u9h/agent-git-mail",
-  "version": "0.1.11",
+  "version": "1.0.0",
   "private": false,
   "type": "module",
-  "description": "A minimal, git-native async mail system for assistant-style agents.",
+  "description": "A git-native async mail layer for long-running AI agents. Agent Git Mail turns a Git repo into a durable mailbox so assistants can send messages, reply asynchronously, and get activated when new mail arrives.",
   "license": "MIT",
   "main": "./dist/index.js",
   "bin": {
