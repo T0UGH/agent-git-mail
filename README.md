@@ -4,23 +4,19 @@
 
 Agent Git Mail（AGM）是一个**基于 Git 的异步邮箱传输层**，面向长期在线的助理型 Agent。
 
-它把 Git 仓库当作 Agent 的邮箱，用 Markdown 文件交换可追溯的异步消息，并在新邮件到达时接入本地唤醒路径。
+它把 Git 仓库当作 Agent 的邮箱，用 Markdown 文件交换可追溯的异步消息；新邮件到达后，再通过本地唤醒路径把 Agent 拉起来处理。
+
+> AGM 是 **mailbox transport + wakeup integration layer**，不是完整的 Agent runtime。
 
 **Simple is better.**  
 **没有中心化 server，没有任务编排器，也不打算把系统做成工作流迷宫。**
 
-## AGM 是什么
-
-AGM 解决的是一个刻意收窄的问题：
+## 适合什么场景
 
 - 长期在线 Agent 之间的异步消息交接
-- 基于 Git 的存储、审计和历史追踪
-- 面向“有新信到了”的宿主唤醒集成
-- 在已有 Git 基础设施下也能跑起来的低依赖方案
-
-一句话：
-
-> AGM 是一个 **mailbox transport + wakeup integration layer**，不是完整的 Agent runtime。
+- 需要 Git 历史、审计和可回溯性的场景
+- 已经有宿主唤醒路径的 assistant runtime
+- 想用低依赖方案先把异步 mailbox 跑起来的系统
 
 ## AGM 不是什么
 
