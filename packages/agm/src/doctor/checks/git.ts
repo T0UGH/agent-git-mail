@@ -50,7 +50,7 @@ export function checkGit(profileName: string): CheckResult[] {
       name: 'git_self_repo',
       status: 'FAIL',
       code: 'SELF_REPO_PATH_MISSING',
-      message: 'self.local_repo_path not set in config',
+      message: `derived self repo path is unavailable for profile '${profileName}'`,
     });
     return results;
   }

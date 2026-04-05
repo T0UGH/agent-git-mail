@@ -247,7 +247,7 @@ function buildConfigYaml(
   return stringifyYaml(config, { indent: 2 });
 }
 
-function outputJson(result: CheckResult & { details?: Record<string, unknown>; configPath?: string; selfId?: string; selfRemoteUrl?: string; selfLocalRepoPath?: string }) {
+function outputJson(result: CheckResult & { details?: Record<string, unknown>; configPath?: string; selfId?: string; selfRemoteUrl?: string; selfLocalRepoPath?: string; derivedSelfRepoPath?: string }) {
   console.log(JSON.stringify({
     ok: result.ok,
     status: result.status,
@@ -276,12 +276,13 @@ export async function cmdBootstrap(argv: BootstrapOptions): Promise<void> {
   const effectiveSelfId = providedSelfId?.trim() || profile;
 
   // Derive local repo path from profile (V3: ~/.agm/profiles/<profile>/self)
-  const effectiveLocalRepoPath = providedLocalRepoPath?.trim() || getSelfRepoPath(profile);
+  const derivedLocalRepoPath = getSelfRepoPath(profile);
+  const effectiveLocalRepoPath = providedLocalRepoPath?.trim() || derivedLocalRepoPath;
 
   // 1. Check system deps
   const depCheck = checkSystemDeps();
   if (!depCheck.ok) {
-    if (json) outputJson({ ...depCheck, configPath: targetConfigPath, selfId: effectiveSelfId, selfRemoteUrl: selfRemoteRepoUrl, selfLocalRepoPath: effectiveLocalRepoPath });
+    if (json) outputJson({ ...depCheck, configPath: targetConfigPath, selfId: effectiveSelfId, selfRemoteUrl: selfRemoteRepoUrl, derivedSelfRepoPath: derivedLocalRepoPath, ...(providedLocalRepoPath?.trim() ? { selfLocalRepoPath: effectiveLocalRepoPath } : {}) });
     else outputText(depCheck);
     process.exit(depCheck.code);
   }
@@ -295,7 +296,7 @@ export async function cmdBootstrap(argv: BootstrapOptions): Promise<void> {
       message: '--profile is required and cannot be empty',
       details: { profile: profile ?? '(empty)' },
     };
-    if (json) outputJson({ ...result, configPath: targetConfigPath, selfId: effectiveSelfId, selfRemoteUrl: selfRemoteRepoUrl, selfLocalRepoPath: effectiveLocalRepoPath });
+    if (json) outputJson({ ...result, configPath: targetConfigPath, selfId: effectiveSelfId, selfRemoteUrl: selfRemoteRepoUrl, derivedSelfRepoPath: derivedLocalRepoPath, ...(providedLocalRepoPath?.trim() ? { selfLocalRepoPath: effectiveLocalRepoPath } : {}) });
     else outputText(result);
     process.exit(EXIT_INPUT_ERROR);
   }
@@ -311,7 +312,7 @@ export async function cmdBootstrap(argv: BootstrapOptions): Promise<void> {
       message: '--self-remote-repo-url is required and cannot be empty',
       details: { selfRemoteRepoUrl: selfRemoteRepoUrl ?? '(empty)' },
     };
-    if (json) outputJson({ ...result, configPath: targetConfigPath, selfId: effectiveSelfId, selfRemoteUrl: selfRemoteRepoUrl, selfLocalRepoPath: effectiveLocalRepoPath });
+    if (json) outputJson({ ...result, configPath: targetConfigPath, selfId: effectiveSelfId, selfRemoteUrl: selfRemoteRepoUrl, derivedSelfRepoPath: derivedLocalRepoPath, ...(providedLocalRepoPath?.trim() ? { selfLocalRepoPath: effectiveLocalRepoPath } : {}) });
     else outputText(result);
     process.exit(EXIT_INPUT_ERROR);
   }
@@ -346,14 +347,15 @@ export async function cmdBootstrap(argv: BootstrapOptions): Promise<void> {
         profile,
         selfId: effectiveSelfId,
         selfRemoteUrl: selfRemoteRepoUrl,
-        selfLocalRepoPath: effectiveLocalRepoPath,
+        derivedSelfRepoPath: derivedLocalRepoPath,
+        ...(providedLocalRepoPath?.trim() ? { selfLocalRepoPath: effectiveLocalRepoPath } : {}),
         activation: activationOpenId
           ? { open_id: activationOpenId }
           : null,
         configContent: configYaml,
       },
     };
-    if (json) outputJson({ ...result, configPath: targetConfigPath, selfId: effectiveSelfId, selfRemoteUrl: selfRemoteRepoUrl, selfLocalRepoPath: effectiveLocalRepoPath });
+    if (json) outputJson({ ...result, configPath: targetConfigPath, selfId: effectiveSelfId, selfRemoteUrl: selfRemoteRepoUrl, derivedSelfRepoPath: derivedLocalRepoPath, ...(providedLocalRepoPath?.trim() ? { selfLocalRepoPath: effectiveLocalRepoPath } : {}) });
     else {
       console.log('🔍 Dry-run — would do the following:\n');
       console.log(`   Config path: ${targetConfigPath}`);
@@ -361,7 +363,10 @@ export async function cmdBootstrap(argv: BootstrapOptions): Promise<void> {
       console.log(`   Profile: ${profile}`);
       console.log(`   Self ID: ${effectiveSelfId}`);
       console.log(`   Remote URL: ${selfRemoteRepoUrl}`);
-      console.log(`   Local path: ${effectiveLocalRepoPath}`);
+      console.log(`   Derived self repo path: ${derivedLocalRepoPath}`);
+      if (providedLocalRepoPath?.trim()) {
+        console.log(`   Local path override: ${effectiveLocalRepoPath}`);
+      }
       if (activationOpenId) {
         console.log(`   Activation: enabled (open_id=${activationOpenId})`);
       } else {
@@ -376,7 +381,7 @@ export async function cmdBootstrap(argv: BootstrapOptions): Promise<void> {
   // 4. Clone or open local repo
   const cloneResult = cloneOrOpenRepo(effectiveLocalRepoPath, selfRemoteRepoUrl);
   if (!cloneResult.ok) {
-    if (json) outputJson({ ...cloneResult, configPath: targetConfigPath, selfId: effectiveSelfId, selfRemoteUrl: selfRemoteRepoUrl, selfLocalRepoPath: effectiveLocalRepoPath });
+    if (json) outputJson({ ...cloneResult, configPath: targetConfigPath, selfId: effectiveSelfId, selfRemoteUrl: selfRemoteRepoUrl, derivedSelfRepoPath: derivedLocalRepoPath, ...(providedLocalRepoPath?.trim() ? { selfLocalRepoPath: effectiveLocalRepoPath } : {}) });
     else outputText(cloneResult);
     process.exit(cloneResult.code);
   }
@@ -384,7 +389,7 @@ export async function cmdBootstrap(argv: BootstrapOptions): Promise<void> {
   // 5. Check for config conflict
   const conflictCheck = checkConfigConflict(targetConfigPath, profile, effectiveSelfId, selfRemoteRepoUrl);
   if (conflictCheck) {
-    if (json) outputJson({ ...conflictCheck, configPath: targetConfigPath, selfId: effectiveSelfId, selfRemoteUrl: selfRemoteRepoUrl, selfLocalRepoPath: effectiveLocalRepoPath });
+    if (json) outputJson({ ...conflictCheck, configPath: targetConfigPath, selfId: effectiveSelfId, selfRemoteUrl: selfRemoteRepoUrl, derivedSelfRepoPath: derivedLocalRepoPath, ...(providedLocalRepoPath?.trim() ? { selfLocalRepoPath: effectiveLocalRepoPath } : {}) });
     else outputText(conflictCheck);
     process.exit(conflictCheck.code);
   }
@@ -394,7 +399,7 @@ export async function cmdBootstrap(argv: BootstrapOptions): Promise<void> {
   const configYaml = buildConfigYaml(existingConfig, profile, effectiveSelfId, selfRemoteRepoUrl, activationOpenId);
   writeFileSync(targetConfigPath, configYaml, 'utf-8');
 
-  const result: CheckResult & { configPath: string; selfId: string; selfRemoteUrl: string; selfLocalRepoPath: string } = {
+  const result: CheckResult & { configPath: string; selfId: string; selfRemoteUrl: string; derivedSelfRepoPath: string; selfLocalRepoPath?: string } = {
     ok: true,
     code: 0,
     status: 'initialized',
@@ -402,14 +407,15 @@ export async function cmdBootstrap(argv: BootstrapOptions): Promise<void> {
     configPath: targetConfigPath,
     selfId: effectiveSelfId,
     selfRemoteUrl: selfRemoteRepoUrl,
-    selfLocalRepoPath: effectiveLocalRepoPath,
+    derivedSelfRepoPath: derivedLocalRepoPath,
+    ...(providedLocalRepoPath?.trim() ? { selfLocalRepoPath: effectiveLocalRepoPath } : {}),
     details: {
       cloneAction: cloneResult.status,
       profile,
       defaultTarget: 'main',
     },
   };
-  if (json) outputJson({ ...result, configPath: targetConfigPath, selfId: effectiveSelfId, selfRemoteUrl: selfRemoteRepoUrl, selfLocalRepoPath: effectiveLocalRepoPath });
+  if (json) outputJson({ ...result, configPath: targetConfigPath, selfId: effectiveSelfId, selfRemoteUrl: selfRemoteRepoUrl, derivedSelfRepoPath: derivedLocalRepoPath, ...(providedLocalRepoPath?.trim() ? { selfLocalRepoPath: effectiveLocalRepoPath } : {}) });
   else {
     console.log('✅ Bootstrap complete');
     console.log(`   Config: ${targetConfigPath}`);
@@ -417,7 +423,10 @@ export async function cmdBootstrap(argv: BootstrapOptions): Promise<void> {
     console.log(`   Profile: ${profile}`);
     console.log(`   Self ID: ${effectiveSelfId}`);
     console.log(`   Remote: ${selfRemoteRepoUrl}`);
-    console.log(`   Local: ${effectiveLocalRepoPath}`);
+    console.log(`   Derived self repo path: ${derivedLocalRepoPath}`);
+    if (providedLocalRepoPath?.trim()) {
+      console.log(`   Local path override: ${effectiveLocalRepoPath}`);
+    }
     if (activationOpenId) {
       console.log(`   Activation: enabled (open_id=${activationOpenId})`);
     } else {

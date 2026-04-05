@@ -55,7 +55,7 @@ async function runPoll(opts: DaemonOptions): Promise<void> {
   const selfRepoPath = getSelfRepoPath(opts.profile);
 
   if (!selfRepoPath) {
-    log('[daemon] no self local_repo_path configured, skipping');
+    log(`[daemon] no derived self repo path for profile '${opts.profile}', skipping`);
     return;
   }
 

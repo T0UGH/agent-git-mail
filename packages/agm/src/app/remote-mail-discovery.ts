@@ -38,7 +38,7 @@ export async function discoverNewMail(opts: RemoteDiscoveryOptions): Promise<Dis
   if (!selfId) throw new Error('self.id is required for remote mail discovery');
 
   const selfRepoPath = getSelfRepoPath(opts.profile);
-  if (!selfRepoPath) throw new Error('self.local_repo_path is required for remote mail discovery');
+  if (!selfRepoPath) throw new Error(`derived self repo path is required for remote mail discovery (profile: ${opts.profile})`);
 
   const selfRepo = new GitRepo(selfRepoPath);
 

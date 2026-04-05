@@ -30,7 +30,11 @@ export async function replyMessage(opts: ReplyOptions): Promise<{ filename: stri
   const profile = resolveProfile(config, opts.profile);
   const selfId = getProfileSelfId(profile);
 
-  const replierRepoPath = getSelfRepoPath(opts.from);
+  if (opts.from !== selfId) {
+    throw new Error(`Sender identity mismatch: --from=${opts.from} but profile '${opts.profile}' is configured as self.id='${selfId}'`);
+  }
+
+  const replierRepoPath = getSelfRepoPath(opts.profile);
 
   const dir = opts.dir ?? 'inbox';
   // Search for the original message in inbox or outbox

@@ -168,6 +168,17 @@ describe('reply (mailbox model)', () => {
     expect(mtInboxContent).toContain('to: mt');
   });
 
+  it('rejects reply when --from does not match profile self.id', async () => {
+    await expect(replyMessage({
+      originalFilename,
+      from: 'mt',
+      bodyFile,
+      dir: 'inbox',
+      configPath,
+      profile: 'hex',
+    })).rejects.toThrow('Sender identity mismatch');
+  });
+
   afterAll(() => {
     rmSync(tmp, { recursive: true, force: true });
   });

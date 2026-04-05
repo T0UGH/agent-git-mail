@@ -196,16 +196,16 @@ Subcommands:
   doctor --profile <name> [config|git|...]  Run health checks (default: all groups)
   log --profile <name> [--tail <n>] [--since <duration>] [--type <type>] [--json]
                             Show structured event log
-  bootstrap                Bootstrap AGM (self + daemon + external activator)
+  bootstrap                Initialize one AGM profile (recommended onboarding entry)
 
 Profile options:
   --profile, -p <name>      Required. Profile name (e.g. mt, hex)
 
 Bootstrap options:
-  --self-id <id>                      Optional. Your agent / user ID (defaults to profile name).
-  --self-remote-repo-url <url>        Optional. Remote git repo URL.
-  --self-local-repo-path <path>       Optional. Local repo path (auto-derived from profile if omitted).
-  --config-path <path>                 Optional. Custom config path.
+  --self-id <id>                      Optional. Agent/user ID (defaults to profile name).
+  --self-remote-repo-url <url>        Required for initialization. Remote mailbox repo URL.
+  --self-local-repo-path <path>       Advanced override. Defaults to the derived profile path.
+  --config-path <path>                Optional. Custom config path.
   --activation-open-id <openId>       Optional. Feishu open_id for external activation.
   --dry-run                           Optional. Print what would be done without writing.
   --json                              Optional. Output machine-readable JSON.
@@ -217,8 +217,8 @@ Examples:
   agm --profile mt send --from mt --to hex --subject "Hello" --body-file /tmp/body.md
   agm --profile hex daemon run
   agm --profile mt doctor
-  agm --profile mt bootstrap
-  agm --profile mt bootstrap --self-remote-repo-url https://github.com/USER/mailbox.git
+  agm --profile mt bootstrap --self-id mt --self-remote-repo-url https://github.com/USER/mailbox.git
+  agm --profile mt bootstrap --self-id mt --self-remote-repo-url https://github.com/USER/mailbox.git --activation-open-id ou_xxx
 `);
 }
 

@@ -32,8 +32,12 @@ export async function sendMessage(opts: SendOptions): Promise<{ filename: string
   const profile = resolveProfile(config, opts.profile);
   const selfId = getProfileSelfId(profile);
 
-  // Sender repo = self repo (sender IS the profile owner)
-  const senderRepoPath = getSelfRepoPath(opts.from);
+  if (opts.from !== selfId) {
+    throw new Error(`Sender identity mismatch: --from=${opts.from} but profile '${opts.profile}' is configured as self.id='${selfId}'`);
+  }
+
+  // Sender repo = self repo for the active profile owner
+  const senderRepoPath = getSelfRepoPath(opts.profile);
   // Recipient repo = sender's contact cache of recipient
   const recipientRepoPath = getContactCachePath(opts.profile, opts.to);
 

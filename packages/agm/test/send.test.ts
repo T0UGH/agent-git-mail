@@ -132,6 +132,17 @@ describe('send (mailbox model)', () => {
     expect(content).toContain('expects_reply:');
   });
 
+  it('rejects send when --from does not match profile self.id', async () => {
+    await expect(sendMessage({
+      from: 'hex',
+      to: 'hex',
+      subject: 'Bad sender',
+      bodyFile,
+      configPath,
+      profile: 'mt',
+    })).rejects.toThrow("Sender identity mismatch");
+  });
+
   afterAll(() => {
     rmSync(tmp, { recursive: true, force: true });
   });

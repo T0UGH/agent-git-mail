@@ -114,7 +114,7 @@ export function checkState(profileName: string): CheckResult[] {
       name: 'waterline_ref',
       status: 'WARN',
       code: 'SELF_REPO_PATH_NOT_SET',
-      message: 'cannot check waterline: self.local_repo_path not set',
+      message: `cannot check waterline: derived self repo path is unavailable for profile '${profileName}'`,
     });
     return results;
   }
