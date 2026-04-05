@@ -129,5 +129,41 @@ export function checkRuntime(profile: string): CheckResult[] {
     });
   }
 
+  // Check: recent push failures (from send/reply delivery path)
+  const pushFailEvents = recentEvents(profile).filter(e => e.type === 'push_failed');
+  if (pushFailEvents.length > 0) {
+    results.push({
+      name: 'push_failure_recent',
+      status: 'WARN',
+      code: 'RECENT_PUSH_FAILURES',
+      message: `${pushFailEvents.length} push failure(s) in last 10 minutes`,
+      details: { count: pushFailEvents.length, last_ts: pushFailEvents[0].ts },
+    });
+  }
+
+  // Check: recent pull failures (distinct from timeouts — actual pull errors)
+  const pullFailEvents = recentEvents(profile).filter(e => e.type === 'pull_failed');
+  if (pullFailEvents.length > 0) {
+    results.push({
+      name: 'pull_failure_recent',
+      status: 'WARN',
+      code: 'RECENT_PULL_FAILURES',
+      message: `${pullFailEvents.length} pull failure event(s) in last 10 minutes`,
+      details: { count: pullFailEvents.length, last_ts: pullFailEvents[0].ts },
+    });
+  }
+
+  // Check: recent remote-advanced events (non-fast-forward push scenarios)
+  const remoteAdvEvents = recentEvents(profile).filter(e => e.type === 'remote_advanced');
+  if (remoteAdvEvents.length > 0) {
+    results.push({
+      name: 'remote_advance_recent',
+      status: 'WARN',
+      code: 'RECENT_REMOTE_ADVANCE',
+      message: `${remoteAdvEvents.length} remote-advance event(s) in last 10 minutes`,
+      details: { count: remoteAdvEvents.length, last_ts: remoteAdvEvents[0].ts },
+    });
+  }
+
   return results;
 }

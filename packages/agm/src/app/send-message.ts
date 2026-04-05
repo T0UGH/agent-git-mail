@@ -8,8 +8,9 @@ import { resolveProfile } from '../config/profile.js';
 import { getProfileSelfId, getProfileContactRemoteRepoUrl } from '../config/index.js';
 import { getSelfRepoPath, getContactCachePath } from '../config/profile-paths.js';
 import { ensureContactCache } from '../git/contact-cache.js';
-import { maybePush } from './git-push.js';
+import { maybePush, mustPush } from './git-push.js';
 import { ensureGitIdentity, ensureMaildirs } from '../git/preflight.js';
+import { appendEvent } from '../log/events.js';
 
 export interface SendOptions {
   from: string;
@@ -33,6 +34,30 @@ export interface SendMessageResult {
     stage: 'sender' | 'recipient';
     error: string;
   };
+}
+
+/**
+ * Emit a structured event, silently ignoring event write errors.
+ */
+async function emitPushFailed(
+  selfId: string,
+  filename: string,
+  profile: string,
+  error: string,
+): Promise<void> {
+  try {
+    appendEvent({
+      ts: new Date().toISOString(),
+      type: 'push_failed',
+      level: 'error',
+      self_id: selfId,
+      filename,
+      message: `push failed: ${filename}`,
+      details: { error },
+    }, profile);
+  } catch {
+    // Non-fatal
+  }
 }
 
 /**
@@ -111,7 +136,14 @@ export async function sendMessage(opts: SendOptions): Promise<SendMessageResult>
     await writeFileAtomic(inboxPath, content);
     await recipientRepo.add(`inbox/${filename}`);
     await recipientRepo.commit(`agm: deliver ${filename}`, `inbox/${filename}`);
-    await maybePush(recipientRepo);
+    // Push with event emission on failure
+    try {
+      await mustPush(recipientRepo);
+    } catch (pushErr) {
+      const errMsg = pushErr instanceof Error ? pushErr.message : String(pushErr);
+      await emitPushFailed(selfId, filename, opts.profile, errMsg);
+      throw pushErr;
+    }
     deliverySuccess = true;
   } catch (e) {
     if (partialFailure) {

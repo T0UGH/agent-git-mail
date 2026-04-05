@@ -23,6 +23,10 @@ const EVENT_TYPES = [
   'activation_skipped_checkpoint',
   'activation_retrying',
   'activation_retries_exhausted',
+  'push_failed',
+  'pull_failed',
+  'remote_advanced',
+  'delivery_partial_failure',
   'pull_timeout',
   'doctor_run',
 ] as const;

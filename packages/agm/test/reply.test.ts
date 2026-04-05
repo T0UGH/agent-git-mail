@@ -102,16 +102,10 @@ describe('reply (mailbox model)', () => {
     expect(replyFile).toBeDefined();
     expect(replyFile).toBe(result.filename);
 
-    // DEBUG: check mt inbox
-    const mtInboxAll = readdirSync(join(hexContactCache, 'inbox'));
-    console.log('DEBUG mt inbox files:', mtInboxAll);
-    console.log('DEBUG originalFilename:', originalFilename);
-
     // Original sender (mt) inbox ALSO gets the reply (dual-write)
     const mtInbox = readdirSync(join(hexContactCache, 'inbox')).filter(f => f.endsWith('.md'));
     // reply file is different from original (different ts/from/to pattern)
     const replyInMtInbox = mtInbox.filter(f => f !== originalFilename);
-    console.log('DEBUG replyInMtInbox:', replyInMtInbox);
     expect(replyInMtInbox.length).toBe(1);
   });
 

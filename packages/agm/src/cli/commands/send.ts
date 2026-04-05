@@ -26,10 +26,8 @@ export async function cmdSend(argv: SendArgv): Promise<void> {
     }
   }
 
-  // Exit code: 0 = full success, 1 = full failure, 2 = partial failure
-  if (!result.localSuccess && !result.deliverySuccess) {
+  // Exit code: 0 = full success, 1 = partial failure or full failure
+  if (result.partialFailure || (!result.localSuccess && !result.deliverySuccess)) {
     process.exit(1);
-  } else if (result.partialFailure) {
-    process.exit(2);
   }
 }
